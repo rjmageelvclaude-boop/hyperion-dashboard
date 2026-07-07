@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Portfolio Command Center</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#f6f8fb;min-height:100vh;color:#1e293b}
+.header{background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);padding:24px 24px 20px}
+.header-inner{max-width:1140px;margin:0 auto}
+.greeting{font-size:14px;color:#64748b;font-weight:500;margin-bottom:2px}
+.title{font-size:22px;font-weight:800;color:#fff;letter-spacing:-.01em}
+.header-meta{font-size:12px;color:#475569;margin-top:4px;display:flex;gap:16px;align-items:center}
+.pulse-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.btn:hover{background:rgba(255,255,255,.15)}
+.btn.active{background:var(--co)}
+.last-pull{font-size:10px;color:#475569;display:flex;align-items:center;gap:4px}
+.portfolio-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:20px}
+.port-card{border-radius:10px;padding:12px 16px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.port-card.off{background:#fff;border:1px solid #e8ecf1}
+.port-card.on{color:#fff;border:1px solid transparent;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.port-card .bar{position:absolute;top:0;left:0;right:0;height:3px}
+.company-bar{padding:10px 24px}
+.company-bar-inner{max-width:1140px;margin:0 auto;font-size:12px;color:rgba(255,255,255,.85);font-weight:500;display:flex;justify-content:space-between}
+.budget-panel{background:#fff;border-bottom:3px solid var(--co);padding:20px 24px;box-shadow:0 4px 12px rgba(0,0,0,.06);display:none}
+.budget-panel.open{display:block}
+.budget-panel-inner{max-width:1140px;margin:0 auto}
+.budget-grid{display:grid;gap:12px}
+.budget-item{background:#f8fafc;border-radius:10px;padding:12px 16px;border:1px solid #e2e8f0}
+.budget-item label{font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:6px;letter-spacing:.04em}
+.budget-item input{width:100%;padding:6px 10px;font-size:18px;font-weight:800;border:2px solid #e2e8f0;border-radius:6px;outline:none;background:#fff;color:#0f172a}
+.budget-item input:focus{border-color:var(--co)}
+.budget-item input.sm{font-size:13px;font-weight:600}
+.main{max-width:1140px;margin:0 auto;padding:20px 24px}
+.hero-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:22px}
+.hero-card{background:#fff;border-radius:12px;padding:16px 20px;border:1px solid #e8ecf1;position:relative;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.hero-bar{position:absolute;top:0;left:0;right:0;height:3px}
+.hero-label{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.hero-value{font-size:22px;font-weight:800;color:#0f172a;line-height:1.1}
+.hero-sub{font-size:11px;color:#94a3b8;margin-top:6px}
+.hero-compare{font-size:10px;margin-top:4px;display:flex;gap:12px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.section{background:#fff;border-radius:12px;border:1px solid #e8ecf1;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.section-header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #e8ecf1;gap:10px}
+.section-bar{width:4px;height:28px;border-radius:2px;flex-shrink:0}
+.section-title{font-size:13px;font-weight:700;color:#0f172a;letter-spacing:.03em;text-transform:uppercase;flex:1}
+.section-summary{font-size:13px;font-weight:700}
+.metric-row{display:flex;align-items:center;padding:7px 12px;border-bottom:1px solid #f1f5f9;gap:6px;border-radius:4px;transition:background .15s;cursor:default}
+.metric-row:hover{background:rgba(0,0,0,.02)}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.m-label{flex:1;font-size:12.5px;color:#475569;font-weight:500}
+.m-val{width:90px;text-align:right;font-weight:700;font-size:14px;color:#1e293b;font-variant-numeric:tabular-nums}
+.m-pct{width:50px;text-align:right;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.m-spark3{width:40px;flex-shrink:0;height:24px}
+.m-spark28{width:64px;flex-shrink:0;height:24px}
+.spark-hdr{font-size:8px;color:#94a3b8;text-align:center;font-weight:600;text-transform:uppercase}
+.divider{padding:10px 12px 4px;margin-top:2px}
+.divider-label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px dashed #e2e8f0;padding-bottom:4px}
+.sub-hdr{display:flex;justify-content:space-between;align-items:center;padding:8px 12px 4px;margin-top:4px}
+.sub-hdr span:first-child{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+.footer{text-align:center;padding:24px 0 16px;font-size:11px;color:#b0b8c4}
+.green{color:#16a34a}.yellow{color:#ca8a04}.red{color:#ef4444}
+.date-pick{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px 10px;color:#fff;font-size:12px;font-weight:600;font-family:inherit;outline:none;cursor:pointer}
+.date-pick::-webkit-calendar-picker-indicator{filter:invert(1);cursor:pointer}
+.viewing-banner{background:#fef3c7;border-bottom:2px solid #f59e0b;padding:10px 24px;text-align:center;font-size:13px;font-weight:600;color:#92400e}
+</style>
+</head>
+<body>
+<div id="app"><div style="display:flex;justify-content:center;align-items:center;height:100vh;color:#94a3b8;font-family:Inter,system-ui"><div style="text-align:center"><div style="font-size:32px;margin-bottom:12px">⚡</div><div style="font-size:14px;font-weight:500">Loading Command Center...</div></div></div></div>
+<script>
+const DATA_URL="https://script.google.com/macros/s/AKfycby-J4xARcDQoDUwSfX6qsjYnM_QZyDfhd09WVBQXomJkLsrDysnkw-L0EZu0_S9Q4kz-w/exec";
+const CO={
+  sierra:{name:"Sierra Air Conditioning & Plumbing",short:"Sierra",color:"#2563eb",grad:"linear-gradient(135deg,#2563eb,#1d4ed8)",lg:"linear-gradient(135deg,#eff6ff,#dbeafe)",plumb:true,costco:true},
+  ultimate:{name:"Ultimate Heating Air & Plumbing",short:"Ultimate",color:"#7c3aed",grad:"linear-gradient(135deg,#7c3aed,#6d28d9)",lg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",plumb:true,costco:false},
+  russett:{name:"Russett Southwest",short:"Russett",color:"#dc2626",grad:"linear-gradient(135deg,#dc2626,#b91c1c)",lg:"linear-gradient(135deg,#fef2f2,#fee2e2)",plumb:false,costco:false}
+};
+
+const now=new Date();
+const hr=now.getHours(),greet=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+let act="sierra",sd={sierra:{},ultimate:{},russett:{}},hist={sierra:[],ultimate:[],russett:[]};
+let budgets=JSON.parse(localStorage.getItem("pcc-b7")||"{}"),sOpen=false,lp=null;
+let viewDate=null; // null = today (live), string = "YYYY-MM-DD" for historical
+
+// ── Date helpers ──
+function toYMD(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function isWeekday(d){var day=(d instanceof Date?d:new Date(d)).getDay();return day!==0&&day!==6}
+function getViewDate(){return viewDate?new Date(viewDate+"T12:00:00"):new Date()}
+
+function weekdaysInMonth(y,m){
+  var count=0,days=new Date(y,m+1,0).getDate();
+  for(var d=1;d<=days;d++){var day=new Date(y,m,d).getDay();if(day!==0&&day!==6)count++}
+  return count;
+}
+function weekdaysElapsed(y,m,upTo){
+  var count=0;
+  for(var d=1;d<=upTo;d++){var day=new Date(y,m,d).getDay();if(day!==0&&day!==6)count++}
+  return count;
+}
+function getNonBudgetedDays(co){
+  var raw=gb(co,"nonBudgetedDays")||"";
+  if(!raw)return[];
+  return raw.split(",").map(function(s){return s.trim()}).filter(function(s){return s.length>0});
+}
+function countNonBudgetedInRange(co,y,m,upTo){
+  var nbd=getNonBudgetedDays(co),count=0;
+  nbd.forEach(function(ds){
+    try{var d=new Date(ds+"T12:00:00");if(d.getFullYear()===y&&d.getMonth()===m&&d.getDate()<=upTo&&isWeekday(d))count++}catch(e){}
+  });
+  return count;
+}
+
+function gb(co,k){return(budgets[co]&&budgets[co][k])||0}
+function gbs(co,k){return(budgets[co]&&budgets[co][k])||""}
+function sb(co,k,v){if(!budgets[co])budgets[co]={};budgets[co][k]=v;localStorage.setItem("pcc-b7",JSON.stringify(budgets));render()}
+function g(k){return(viewDate?getHistoricalData():sd[act])[k]||0}
+function getHistoricalData(){
+  var h=hist[act]||[];
+  for(var i=h.length-1;i>=0;i--){
+    var hd=h[i].date;if(hd instanceof Date)hd=toYMD(hd);
+    if(hd===viewDate)return h[i];
+  }
+  return {};
+}
+function fmt(v,f){if(f==="$")return"$"+Math.round(v).toLocaleString();if(f==="%")return v.toFixed(1)+"%";return Math.round(v).toLocaleString()}
+function pc(p){return p>=100?"green":p>=80?"yellow":"red"}
+
+function weekdayFilter(entries){return entries.filter(function(e){return isWeekday(e.date)})}
+function sparkSvg(key,color,entries,w,h){
+  var data=weekdayFilter(entries);
+  if(data.length<2)return'';
+  var d=data.map(function(e){return e[key]||0});
+  var mn2=Math.min.apply(null,d),mx=Math.max.apply(null,d),rng=mx-mn2||1,p=2;
+  var pts=d.map(function(v,i){return(p+i/(d.length-1)*(w-p*2))+","+(h-p-(v-mn2)/rng*(h-p*2))});
+  var last=pts[pts.length-1].split(",");
+  var trend=d[d.length-1]>=d[d.length-2]?color:"#ef4444";
+  return'<svg width="'+w+'" height="'+h+'" style="display:block"><polyline points="'+pts.join(" ")+'" fill="none" stroke="'+trend+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+last[0]+'" cy="'+last[1]+'" r="2" fill="#fff" stroke="'+trend+'" stroke-width="1.5"/></svg>';
+}
+function spark3(key,color){return sparkSvg(key,color,(hist[act]||[]).slice(-5),40,22)}
+function spark28(key,color){return sparkSvg(key,color,hist[act]||[],64,22)}
+
+function ring(val,max,color,sz){
+  sz=sz||58;var pct=max>0?Math.min(val/max*100,120):0,r=(sz-5)/2,circ=2*Math.PI*r;
+  var off=circ-Math.min(pct,100)/100*circ;
+  var c=pct>=100?"#16a34a":pct>=80?"#eab308":pct>=50?color:"#ef4444";
+  return'<svg width="'+sz+'" height="'+sz+'" style="transform:rotate(-90deg)"><circle cx="'+sz/2+'" cy="'+sz/2+'" r="'+r+'" fill="none" stroke="#f1f5f9" stroke-width="5"/><circle cx="'+sz/2+'" cy="'+sz/2+'" r="'+r+'" fill="none" stroke="'+c+'" stroke-width="5" stroke-dasharray="'+circ+'" stroke-dashoffset="'+off+'" stroke-linecap="round" style="transition:stroke-dashoffset .8s"/><text x="'+sz/2+'" y="'+sz/2+'" text-anchor="middle" dominant-baseline="central" style="transform:rotate(90deg);transform-origin:center;font-size:13px;font-weight:800;fill:'+c+'">'+Math.round(pct)+'%</text></svg>';
+}
+function dot(v,b){if(!b||b<=0)return'<div class="dot" style="visibility:hidden"></div>';var p=v/b*100,c=p>=100?"#16a34a":p>=80?"#eab308":"#ef4444";return'<div class="dot" style="background:'+c+'"></div>'}
+
+function mrow(label,val,f,bgt,key){
+  var co=CO[act],c=co.color,p=bgt&&bgt>0?val/bgt*100:null;
+  var bg=p!==null?(p>=100?"rgba(22,163,74,.04)":p>=80?"rgba(234,179,8,.03)":"rgba(239,68,68,.04)"):"";
+  var dotH=bgt?dot(val,bgt):'<div class="dot" style="visibility:hidden"></div>';
+  var pctH=p!==null?'<div class="m-pct '+pc(p)+'">'+Math.round(p)+'%</div>':'<div class="m-pct"></div>';
+  return'<div class="metric-row" style="background:'+bg+'">'+dotH+'<div class="m-label">'+label+'</div><div class="m-val">'+fmt(val,f)+'</div>'+pctH+'<div class="m-spark3">'+(key?spark3(key,c):"")+'</div><div class="m-spark28">'+(key?spark28(key,c):"")+'</div></div>';
+}
+
+function hero(label,val,f,bgt,sub,hasRing,compare){
+  var co=CO[act],p=bgt&&bgt>0?val/bgt*100:null;
+  var sc=p!==null?(p>=100?"#16a34a":p>=80?"#eab308":"#ef4444"):"#94a3b8";
+  return'<div class="hero-card"><div class="hero-bar" style="background:'+sc+'"></div><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1"><div class="hero-label">'+label+'</div><div class="hero-value">'+fmt(val,f)+'</div>'+(sub?'<div class="hero-sub">'+sub+'</div>':'')+(compare||'')+'</div>'+(hasRing&&p!==null?'<div>'+ring(val,bgt,co.color)+'</div>':'')+'</div></div>';
+}
+function divd(l){return'<div class="divider"><div class="divider-label">'+l+'</div></div>'}
+function subh(t,v,c){return'<div class="sub-hdr"><span>'+t+'</span>'+(v>0?'<span style="font-size:12px;font-weight:700;color:'+c+'">$'+v.toLocaleString()+'</span>':'')+'</div>'}
+function sec(t,icon,color,lg,summary,body){
+  return'<div class="section"><div class="section-header" style="background:'+lg+'"><div class="section-bar" style="background:'+color+'"></div><span style="font-size:13px">'+icon+'</span><span class="section-title">'+t+'</span>'+(summary?'<span class="section-summary" style="color:'+color+'">'+summary+'</span>':'')+'</div><div style="padding:4px 4px 8px">'+body+'</div></div>';
+}
+
+async function fetchData(){
+  try{var r=await fetch(DATA_URL),j=await r.json();
+    if(j.current){sd=j.current}else{sd=j}
+    sd.sierra=sd.sierra||{};sd.ultimate=sd.ultimate||{};sd.russett=sd.russett||{};
+    if(j.history){hist=j.history;hist.sierra=hist.sierra||[];hist.ultimate=hist.ultimate||[];hist.russett=hist.russett||[]}
+  }catch(e){console.error(e)}
+}
+async function refresh(){await fetchData();lp=new Date().toLocaleString();render()}
+
+function setViewDate(v){
+  var todayStr=toYMD(new Date());
+  viewDate=(v&&v!==todayStr)?v:null;
+  render();
+}
+
+function render(){
+  var co=CO[act],c=co.color;
+  document.documentElement.style.setProperty("--co",c);
+  var vd=getViewDate();
+  var vdMonth=vd.getMonth(),vdYear=vd.getFullYear(),vdDay=vd.getDate();
+  var vdMonthName=vd.toLocaleString("default",{month:"long"});
+  var dim=new Date(vdYear,vdMonth+1,0).getDate();
+  var isToday=!viewDate;
+
+  // Budgeted days calculation
+  var totalWeekdays=weekdaysInMonth(vdYear,vdMonth);
+  var nbdCount=countNonBudgetedInRange(act,vdYear,vdMonth,dim);
+  var bd=totalWeekdays-nbdCount;
+  var wdElapsed=weekdaysElapsed(vdYear,vdMonth,vdDay);
+  var nbdElapsed=countNonBudgetedInRange(act,vdYear,vdMonth,vdDay);
+  var bde=wdElapsed-nbdElapsed;
+  var bdr=bd-bde;
+
+  var monthlyBudget=(gb(act,"dailyRevenueBudget")||0)*bd;
+  var monthlyPlan=gb(act,"monthlyPlan")||0;
+  var dailyRevBgt=gb(act,"dailyRevenueBudget");
+  var dailySalesBgt=gb(act,"dailySalesBudget");
+  var hvacJBgt=gb(act,"hvacJobBudget");
+  var plumbJBgt=gb(act,"plumbJobBudget");
+  var roppBgt=gb(act,"hvacRoppsDailyBudget");
+  var dailyRev=g("dailyRevenue"),dailySales=g("dailySales");
+  var mtdRev=gb(act,"mtdRevenueOverride")||0;
+  var mtdSales=gb(act,"mtdSalesOverride")||0;
+  var adjDaily=bdr>0?(monthlyBudget-mtdRev)/bdr:dailyRevBgt;
+  var flipRate=g("hvacRoppsRan")>0?(g("tglsSet")/g("hvacRoppsRan"))*100:0;
+  var hvacRan=g("hvacMaintenanceRan")+g("hvacDemandRan");
+  var hvacAvg=hvacRan>0?g("hvacServiceRevenue")/hvacRan:0;
+  var plumbRan=g("plumbMaintenanceRan")+g("plumbDemandRan");
+  var plumbAvg=plumbRan>0?g("plumbRevenue")/plumbRan:0;
+  var totalHS=g("tglTotalSales")+g("mktTotalSales")+(co.costco?g("costcoTotalSales"):0);
+  var lastUpd=(viewDate?getHistoricalData():sd[act]).lastUpdated||"Not yet";
+  var totalCanceled=g("hvacSMCanceled")+g("hvacSalesCanceled")+(co.plumb?g("plumbCanceled"):0);
+
+  var bFields=[
+    {k:"dailyRevenueBudget",l:"Daily Revenue Budget",type:"number"},
+    {k:"dailySalesBudget",l:"Daily Sales Budget",type:"number"},
+    {k:"monthlyPlan",l:"Monthly Plan",type:"number"},
+    {k:"hvacJobBudget",l:"HVAC Job Budget",type:"number"},
+    ...(co.plumb?[{k:"plumbJobBudget",l:"Plumbing Job Budget",type:"number"}]:[]),
+    {k:"hvacRoppsDailyBudget",l:"ROPPs Daily Budget",type:"number"},
+    {k:"mtdRevenueOverride",l:"MTD Revenue Override",type:"number"},
+    {k:"mtdSalesOverride",l:"MTD Sales Override",type:"number"},
+    {k:"nonBudgetedDays",l:"Non Budgeted Days (YYYY-MM-DD, comma separated)",type:"text"},
+  ];
+
+  var sparkHdr='<div class="metric-row" style="border:none;padding:2px 12px"><div class="dot" style="visibility:hidden"></div><div class="m-label"></div><div class="m-val"></div><div class="m-pct"></div><div class="m-spark3"><div class="spark-hdr">3 Day</div></div><div class="m-spark28"><div class="spark-hdr">4 Week</div></div></div>';
+
+  // Portfolio cards
+  var pc2="";
+  for(var k in CO){var cc=CO[k],d=sd[k]||{},rv=d.dailyRevenue||0,sl=d.dailySales||0,bg2=gb(k,"dailyRevenueBudget")||0,pp=bg2>0?Math.round(rv/bg2*100):0,on=act===k;
+    var scc=pp>=100?"#16a34a":pp>=80?"#eab308":pp>0?"#ef4444":"#94a3b8";
+    pc2+='<div class="port-card '+(on?"on":"off")+'" onclick="act=\''+k+'\';render()" style="'+(on?"background:"+cc.grad:"")+'">'+(!on?'<div class="bar" style="background:'+cc.color+'"></div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;color:'+(on?"rgba(255,255,255,.8)":"#64748b")+'">'+cc.short+'</div><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:18px;font-weight:800;color:'+(on?"#fff":"#0f172a")+'">$'+rv.toLocaleString()+'</div><div style="font-size:11px;margin-top:2px;color:'+(on?"rgba(255,255,255,.7)":"#94a3b8")+'">$'+sl.toLocaleString()+' sales</div></div><div><div style="font-size:20px;font-weight:800;color:'+(on?"#fff":scc)+'">'+pp+'%</div><div style="font-size:9px;text-transform:uppercase;text-align:center;color:'+(on?"rgba(255,255,255,.6)":"#94a3b8")+'">to budget</div></div></div></div>';}
+
+  var budgetPct=monthlyBudget>0?Math.round(mtdRev/monthlyBudget*100):0;
+  var planPct=monthlyPlan>0?Math.round(mtdRev/monthlyPlan*100):0;
+  var mtdCompare='<div class="hero-compare"><span style="color:'+(budgetPct>=100?"#16a34a":budgetPct>=80?"#ca8a04":"#ef4444")+'">'+budgetPct+'% to budget</span>'+(monthlyPlan>0?'<span style="color:'+(planPct>=100?"#16a34a":planPct>=80?"#ca8a04":"#ef4444")+'">'+planPct+'% to plan</span>':'')+'</div>';
+
+  // Sections
+  var ccB=divd("HVAC")+mrow("HVAC Job Budget",hvacJBgt,"#",undefined,null)+mrow("HVAC Jobs on Board Today",g("hvacJobsOnBoard"),"#",hvacJBgt,"hvacJobsOnBoard")+mrow("HVAC Capacity",hvacJBgt>0?(g("hvacJobsOnBoard")/hvacJBgt*100):0,"%",undefined,null);
+  if(co.plumb){ccB+=divd("Plumbing")+mrow("Plumbing Job Budget",plumbJBgt,"#",undefined,null)+mrow("Plumbing Jobs on Board",g("plumbJobsOnBoard"),"#",plumbJBgt,"plumbJobsOnBoard")+mrow("Plumbing Capacity",plumbJBgt>0?(g("plumbJobsOnBoard")/plumbJBgt*100):0,"%",undefined,null)}
+  ccB+=divd("Phones")+mrow("Inbound Calls",g("callsInbound"),"#",undefined,"callsInbound")+mrow("Inbound Leads",g("inboundLeads"),"#",undefined,"inboundLeads")+mrow("Inbound Booking Rate",g("bookingRate"),"%",undefined,"bookingRate");
+  ccB+=divd("ROPPs")+mrow("ROPP Budget",roppBgt,"#",undefined,null)+mrow("ROPPs on Board",g("hvacRoppsOnBoard"),"#",roppBgt,"hvacRoppsOnBoard");
+
+  var tB=mrow("ROPPs on Board",g("hvacRoppsOnBoard"),"#",roppBgt,"hvacRoppsOnBoard")+mrow("ROPPs Ran",g("hvacRoppsRan"),"#",undefined,"hvacRoppsRan")+mrow("TGLs Set",g("tglsSet"),"#",undefined,"tglsSet")+mrow("TGLs Set Same Day",g("tglsSetSameDay"),"#",undefined,"tglsSetSameDay")+mrow("Flip Rate",flipRate,"%",undefined,null);
+
+  var canB=mrow("HVAC Service & Maintenance",g("hvacSMCanceled"),"#",undefined,"hvacSMCanceled")+mrow("HVAC Sales",g("hvacSalesCanceled"),"#",undefined,"hvacSalesCanceled");
+  if(co.plumb){canB+=mrow("Plumbing",g("plumbCanceled"),"#",undefined,"plumbCanceled")}
+
+  var hB=mrow("Maintenance on Board",g("hvacMaintenanceOnBoard"),"#",undefined,"hvacMaintenanceOnBoard")+mrow("Maintenance Ran",g("hvacMaintenanceRan"),"#",undefined,"hvacMaintenanceRan")+mrow("Demand on Board",g("hvacDemandOnBoard"),"#",undefined,"hvacDemandOnBoard")+mrow("Demand Ran",g("hvacDemandRan"),"#",undefined,"hvacDemandRan")+mrow("Total Revenue",g("hvacServiceRevenue"),"$",undefined,"hvacServiceRevenue")+mrow("Total Sales",g("hvacServiceSales"),"$",undefined,"hvacServiceSales")+mrow("Average Ticket",hvacAvg,"$",undefined,null)+mrow("Memberships Sold",g("hvacMembershipsSold"),"#",undefined,"hvacMembershipsSold");
+
+  var sB=subh("TGL Sales",g("tglTotalSales"),c)+mrow("Total Sales",g("tglTotalSales"),"$",undefined,"tglTotalSales")+mrow("Leads Ran",g("tglLeadsRan"),"#",undefined,"tglLeadsRan")+mrow("Leads Sold",g("tglLeadsSold"),"#",undefined,"tglLeadsSold")+mrow("Conversion Rate",g("tglConversion"),"%",undefined,null)+mrow("Average Ticket",g("tglAvgTicket"),"$",undefined,null);
+  sB+=subh("Marketing Sales",g("mktTotalSales"),c)+mrow("Total Sales",g("mktTotalSales"),"$",undefined,"mktTotalSales")+mrow("Leads Ran",g("mktLeadsRan"),"#",undefined,"mktLeadsRan")+mrow("Leads Sold",g("mktLeadsSold"),"#",undefined,"mktLeadsSold")+mrow("Conversion Rate",g("mktConversion"),"%",undefined,null)+mrow("Average Ticket",g("mktAvgTicket"),"$",undefined,null);
+  if(co.costco){sB+=subh("Costco Sales",g("costcoTotalSales"),c)+mrow("Total Sales",g("costcoTotalSales"),"$",undefined,"costcoTotalSales")+mrow("Leads Ran",g("costcoLeadsRan"),"#",undefined,"costcoLeadsRan")+mrow("Leads Sold",g("costcoLeadsSold"),"#",undefined,"costcoLeadsSold")+mrow("Conversion Rate",g("costcoConversion"),"%",undefined,null)+mrow("Average Ticket",g("costcoAvgTicket"),"$",undefined,null)}
+
+  var pB="";
+  if(co.plumb){pB=mrow("Maintenance on Board",g("plumbMaintenanceOnBoard"),"#",undefined,"plumbMaintenanceOnBoard")+mrow("Maintenance Ran",g("plumbMaintenanceRan"),"#",undefined,"plumbMaintenanceRan")+mrow("Demand on Board",g("plumbDemandOnBoard"),"#",undefined,"plumbDemandOnBoard")+mrow("Demand Ran",g("plumbDemandRan"),"#",undefined,"plumbDemandRan")+mrow("Total Revenue",g("plumbRevenue"),"$",undefined,"plumbRevenue")+mrow("Total Sales",g("plumbSales"),"$",undefined,"plumbSales")+mrow("Average Ticket",plumbAvg,"$",undefined,null)+mrow("Memberships Sold",g("plumbMembershipsSold"),"#",undefined,"plumbMembershipsSold")+mrow("Tankless Installed",g("plumbTanklessSold"),"#",undefined,"plumbTanklessSold")+mrow("Filtration Installed",g("plumbFiltrationSold"),"#",undefined,"plumbFiltrationSold")+mrow("Tanks Installed",g("plumbTanksSold"),"#",undefined,"plumbTanksSold")}
+
+  var bHtml=bFields.map(function(b){
+    var val=b.type==="text"?gbs(act,b.k):gb(act,b.k);
+    var cls=b.type==="text"?"sm":"";
+    return'<div class="budget-item"><label>'+b.l+'</label><input type="'+b.type+'" class="'+cls+'" value="'+(val||"")+'" placeholder="'+(b.type==="text"?"2026-07-03, 2026-07-04":"0")+'" onchange="sb(\''+act+'\',\''+b.k+'\','+(b.type==="text"?"this.value":"parseFloat(this.value)||0")+')"></div>';
+  }).join("");
+
+  var viewBanner=viewDate?'<div class="viewing-banner">Viewing: '+vd.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+' <button onclick="setViewDate(null)" style="background:#f59e0b;color:#fff;border:none;border-radius:4px;padding:4px 12px;font-weight:600;cursor:pointer;margin-left:12px;font-size:12px">Back to Today</button></div>':"";
+
+  document.getElementById("app").innerHTML=
+    '<div class="header"><div class="header-inner"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div><div class="greeting">'+greet+', RJ</div><div class="title">Portfolio Command Center</div><div class="header-meta"><span>'+vdMonthName+' '+vdYear+'</span><span style="display:flex;align-items:center;gap:4px">'+(isToday?'<span class="pulse-dot"></span> ':'')+' Day '+vdDay+' of '+dim+'</span><span>Budgeted Day '+bde+' of '+bd+(bdr>0?' · '+bdr+' remaining':'')+'</span></div></div><div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px"><div style="display:flex;gap:8px;align-items:center"><input type="date" class="date-pick" value="'+(viewDate||toYMD(new Date()))+'" onchange="setViewDate(this.value)"><button class="btn'+(sOpen?" active":"")+'" onclick="sOpen=!sOpen;render()"><span style="font-size:14px">⚙</span> '+(sOpen?"Close":"Budgets")+'</button></div><button class="btn" onclick="viewDate=null;refresh()" style="font-size:11px">↻ Refresh Live Data</button><div class="last-pull"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:'+(lp?"#22c55e":"#64748b")+'"></span> '+(lp?"Last pull: "+lp:"Loading...")+'</div><div class="last-pull">ST Data: '+lastUpd+'</div></div></div><div class="portfolio-strip">'+pc2+'</div></div></div>'+
+    viewBanner+
+    '<div class="company-bar" style="background:'+co.grad+'"><div class="company-bar-inner"><span>'+co.name+'</span><span>'+bd+' budgeted days ('+totalWeekdays+' weekdays'+(nbdCount>0?' minus '+nbdCount+' off':'')+')</span></div></div>'+
+    '<div class="budget-panel'+(sOpen?" open":"")+'"><div class="budget-panel-inner"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:14px;text-transform:uppercase;letter-spacing:.04em">Monthly Budgets & Overrides — '+co.short+'</div><div class="budget-grid" style="grid-template-columns:repeat(3,1fr)">'+bHtml+'</div></div></div>'+
+    '<div class="main"><div class="hero-grid">'+
+    hero("Today's Revenue",dailyRev,"$",dailyRevBgt,null,true)+
+    hero("Today's Sales",dailySales,"$",dailySalesBgt,null,true)+
+    hero("MTD Revenue",mtdRev,"$",monthlyBudget,monthlyPlan>0?"Plan: $"+monthlyPlan.toLocaleString():"Set monthly plan in budgets",true,mtdCompare)+
+    hero("Adjusted Daily Budget",adjDaily,"$",null,bdr>0?bdr+" budgeted days remaining":"Last budgeted day",false)+
+    '</div><div class="two-col"><div>'+
+    sec("Call Center","📞",c,co.lg,null,sparkHdr+ccB)+
+    sec("TGL","🔄",c,co.lg,flipRate.toFixed(1)+"% Flip",tB)+
+    sec("Canceled Calls","🚫",c,co.lg,totalCanceled+" total",canB)+
+    (co.plumb?sec("Plumbing","🔧",c,co.lg,g("plumbRevenue")>0?"$"+g("plumbRevenue").toLocaleString():null,pB):"")+
+    '</div><div>'+
+    sec("HVAC Service & Maintenance","❄️",c,co.lg,g("hvacServiceRevenue")>0?"$"+g("hvacServiceRevenue").toLocaleString():null,hB)+
+    sec("HVAC Sales","📊",c,co.lg,totalHS>0?"$"+totalHS.toLocaleString():null,sB)+
+    '</div></div><div class="footer">Budgeted days auto calculated from weekdays · Weekends excluded from sparklines · Date picker shows historical data</div></div>';
+}
+refresh();
+</script>
+</body>
+</html>
