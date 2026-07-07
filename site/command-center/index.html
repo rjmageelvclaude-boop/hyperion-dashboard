@@ -82,6 +82,8 @@ const now=new Date();
 const hr=now.getHours(),greet=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
 let act="sierra",sd={sierra:{},ultimate:{},russett:{}},hist={sierra:[],ultimate:[],russett:[]};
 let budgets=JSON.parse(localStorage.getItem("pcc-b7")||"{}"),sOpen=false,lp=null;
+let budgetsSynced=false; // true once shared budgets load from the Apps Script
+const PIN_KEY="pcc-pin";
 let viewDate=null; // null = today (live), string = "YYYY-MM-DD" for historical
 
 // ── Date helpers ──
@@ -114,7 +116,31 @@ function countNonBudgetedInRange(co,y,m,upTo){
 
 function gb(co,k){return(budgets[co]&&budgets[co][k])||0}
 function gbs(co,k){return(budgets[co]&&budgets[co][k])||""}
-function sb(co,k,v){if(!budgets[co])budgets[co]={};budgets[co][k]=v;localStorage.setItem("pcc-b7",JSON.stringify(budgets));render()}
+function sb(co,k,v){if(!budgets[co])budgets[co]={};budgets[co][k]=v;localStorage.setItem("pcc-b7",JSON.stringify(budgets));render();saveBudget(co,k,v)}
+
+// ── Shared budgets (stored in the Apps Script; localStorage is the fallback) ──
+async function budgetPost(body){
+  var r=await fetch(DATA_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)});
+  return r.json();
+}
+async function loadBudgets(){
+  try{
+    var j=await budgetPost({action:"getBudgets"});
+    if(j&&j.ok){budgets=j.budgets||{};budgetsSynced=true;localStorage.setItem("pcc-b7",JSON.stringify(budgets))}
+  }catch(e){console.warn("Shared budgets unavailable - using this device's saved budgets",e)}
+}
+async function saveBudget(co,k,v){
+  if(!budgetsSynced)return; // server not set up yet: keep local-only behavior
+  var pin=localStorage.getItem(PIN_KEY)||prompt("Enter the budget PIN to save shared budgets:");
+  if(!pin)return;
+  try{
+    var j=await budgetPost({action:"setBudget",pin:pin,co:co,key:k,value:v});
+    if(j&&j.ok){localStorage.setItem(PIN_KEY,pin);budgets=j.budgets||budgets;localStorage.setItem("pcc-b7",JSON.stringify(budgets))}
+    else if(j&&j.error==="bad-pin"){localStorage.removeItem(PIN_KEY);alert("Wrong PIN - change was NOT saved to shared budgets.")}
+    else{alert("Could not save shared budget: "+((j&&j.error)||"unknown error"))}
+  }catch(e){alert("Could not reach the budget server - change saved on this device only.")}
+  render();
+}
 function g(k){return(viewDate?getHistoricalData():sd[act])[k]||0}
 function getHistoricalData(){
   var h=hist[act]||[];
@@ -175,7 +201,7 @@ async function fetchData(){
     if(j.history){hist=j.history;hist.sierra=hist.sierra||[];hist.ultimate=hist.ultimate||[];hist.russett=hist.russett||[]}
   }catch(e){console.error(e)}
 }
-async function refresh(){await fetchData();lp=new Date().toLocaleString();render()}
+async function refresh(){await Promise.all([fetchData(),loadBudgets()]);lp=new Date().toLocaleString();render()}
 
 function setViewDate(v){
   var todayStr=toYMD(new Date());
@@ -278,7 +304,7 @@ function render(){
     '<div class="header"><div class="header-inner"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div><div class="greeting">'+greet+', RJ</div><div class="title">InterMountain Command Center</div><div class="header-meta"><span>'+vdMonthName+' '+vdYear+'</span><span style="display:flex;align-items:center;gap:4px">'+(isToday?'<span class="pulse-dot"></span> ':'')+' Day '+vdDay+' of '+dim+'</span><span>Budgeted Day '+bde+' of '+bd+(bdr>0?' · '+bdr+' remaining':'')+'</span></div></div><div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px"><div style="display:flex;gap:8px;align-items:center"><input type="date" class="date-pick" value="'+(viewDate||toYMD(new Date()))+'" onchange="setViewDate(this.value)"><button class="btn'+(sOpen?" active":"")+'" onclick="sOpen=!sOpen;render()"><span style="font-size:14px">⚙</span> '+(sOpen?"Close":"Budgets")+'</button></div><button class="btn" onclick="viewDate=null;refresh()" style="font-size:11px">↻ Refresh Live Data</button><div class="last-pull"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:'+(lp?"#22c55e":"#64748b")+'"></span> '+(lp?"Last pull: "+lp:"Loading...")+'</div><div class="last-pull">ST Data: '+lastUpd+'</div></div></div><div class="portfolio-strip">'+pc2+'</div></div></div>'+
     viewBanner+
     '<div class="company-bar" style="background:'+co.grad+'"><div class="company-bar-inner"><span>'+co.name+'</span><span>'+bd+' budgeted days ('+totalWeekdays+' weekdays'+(nbdCount>0?' minus '+nbdCount+' off':'')+')</span></div></div>'+
-    '<div class="budget-panel'+(sOpen?" open":"")+'"><div class="budget-panel-inner"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:14px;text-transform:uppercase;letter-spacing:.04em">Monthly Budgets & Overrides — '+co.short+'</div><div class="budget-grid" style="grid-template-columns:repeat(3,1fr)">'+bHtml+'</div></div></div>'+
+    '<div class="budget-panel'+(sOpen?" open":"")+'"><div class="budget-panel-inner"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Monthly Budgets & Overrides — '+co.short+'</div><div style="font-size:11px;margin-bottom:14px;color:'+(budgetsSynced?"#16a34a":"#ca8a04")+'">'+(budgetsSynced?"● Shared budgets — changes here update every viewer":"● Local to this device — shared budget server not connected")+'</div><div class="budget-grid" style="grid-template-columns:repeat(3,1fr)">'+bHtml+'</div></div></div>'+
     '<div class="main"><div class="hero-grid">'+
     hero("Today's Revenue",dailyRev,"$",dailyRevBgt,null,true)+
     hero("Today's Sales",dailySales,"$",dailySalesBgt,null,true)+
