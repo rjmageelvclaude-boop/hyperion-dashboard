@@ -11,13 +11,12 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#fff;color:#111;min-height:100vh}
 .wrap{max-width:1500px;margin:0 auto;padding:18px 26px 30px}
-.topbar{display:flex;align-items:center;gap:18px;margin-bottom:14px}
+.topbar{display:flex;align-items:center;gap:18px;margin-bottom:14px;flex-wrap:wrap}
 .big-title{font-size:52px;font-weight:900;letter-spacing:-1px;text-transform:uppercase;line-height:1;flex-shrink:0}
-.pager{flex:1;display:flex;justify-content:center;align-items:center;gap:14px;font-size:14px;font-weight:700;color:#555}
-.pager .pgbtn{cursor:pointer;user-select:none;color:#111;letter-spacing:.5px}
-.pager .pgbtn:hover{color:var(--co)}
-.pager .pgbtn.dim{color:#bbb;cursor:default}
-.pager .sep{color:#ccc}
+.tabs{flex:1;display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap}
+.tab{cursor:pointer;user-select:none;padding:9px 14px;border-radius:8px;font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#555;background:#eef0f3;border:2px solid transparent;white-space:nowrap}
+.tab:hover{color:#111;border-color:#c9ced6}
+.tab.on{background:var(--tabco);color:#fff}
 .co-badge{flex-shrink:0;text-align:right}
 .co-name{font-size:20px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--co);line-height:1.1}
 .co-trade{font-size:12px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px}
@@ -41,9 +40,7 @@ tr.zebra td:not(.lbl){background:#f3f4f6}
 .lbl.edit:hover::after{content:"✎ default"}
 .dash{color:#999}
 .footer{margin-top:14px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#999;flex-wrap:wrap;gap:6px}
-.dots{display:flex;gap:7px;justify-content:center;margin-top:12px}
-.dots span{width:9px;height:9px;border-radius:50%;background:#ddd;cursor:pointer}
-.dots span.on{background:var(--co)}
+.fallback-note{margin-top:8px;font-size:12px;font-weight:700;color:#b45309}
 @media(max-width:900px){.big-title{font-size:34px}.co-name{font-size:15px}}
 </style>
 </head>
@@ -57,17 +54,18 @@ tr.zebra td:not(.lbl){background:#f3f4f6}
 // Center uses for budgets, namespaced under co="callboard".
 const BUDGET_URL="https://script.google.com/macros/s/AKfycby-J4xARcDQoDUwSfX6qsjYnM_QZyDfhd09WVBQXomJkLsrDysnkw-L0EZu0_S9Q4kz-w/exec";
 const DATA_URL="data.json";
-const ROTATE_SECONDS=20;      // auto-advance between boards
 const REFRESH_MINUTES=5;      // re-pull data.json + shared inputs
 const ROPP_GREEN_PCT=35;      // ROPP % turns green at/above this
 
 const PIN_KEY="pcc-pin";      // same PIN cache as the Command Center
 const LS_KEY="cb-settings-v1";
+const TAB_KEY="cb-tab-v1";
 const ORDER=["sierra-hvac","sierra-plumbing","ultimate-hvac","ultimate-plumbing","russett-hvac"];
+const TAB_LABEL={"sierra-hvac":"Sierra HVAC","sierra-plumbing":"Sierra Plumbing","ultimate-hvac":"Ultimate HVAC","ultimate-plumbing":"Ultimate Plumbing","russett-hvac":"Russett HVAC"};
 const CO_COLOR={sierra:"#24408e",ultimate:"#6d28d9",russett:"#b91c1c"};
 
 let data=null,settings=JSON.parse(localStorage.getItem(LS_KEY)||"{}"),synced=false;
-let idx=0,paused=false,feedError=null;
+let idx=Math.max(0,ORDER.indexOf(localStorage.getItem(TAB_KEY))),feedError=null;
 
 // ── shared settings (Apps Script) ──
 async function post(body){
@@ -148,6 +146,8 @@ function render(){
   if(!b){idx=0;board=ORDER[0];b=data.boards[board]}
   var color=CO_COLOR[b.company]||"#24408e";
   document.documentElement.style.setProperty("--co",color);
+  document.documentElement.style.setProperty("--tabco",color);
+  var classFallback=b.days.some(function(d){return d.oppSource==="class"});
   var wx=(data.weather||{})[b.company]||null;
 
   var hdr='<tr class="hdr"><th class="lbl">Day</th>'+b.days.map(function(d){
@@ -193,26 +193,23 @@ function render(){
   app.innerHTML=
     '<div class="topbar">'+
       '<div class="big-title">4 Day Call</div>'+
-      '<div class="pager">'+
-        '<span>'+(idx+1)+' of '+ORDER.length+'</span><span class="sep">|</span>'+
-        '<span class="pgbtn" onclick="nav(-1)">&lsaquo; PREV</span>'+
-        '<span class="pgbtn" onclick="nav(1)">NEXT &rsaquo;</span><span class="sep">|</span>'+
-        '<span class="pgbtn" onclick="togglePause()">'+(paused?"PLAY &#9654;":"PAUSE &#10073;&#10073;")+'</span>'+
-      '</div>'+
+      '<div class="tabs">'+ORDER.map(function(k,i){
+        var c=CO_COLOR[(data.boards[k]||{}).company]||"#24408e";
+        return'<span class="tab'+(i===idx?" on":"")+'" style="'+(i===idx?"background:"+c:"")+'" onclick="goTo('+i+')">'+TAB_LABEL[k]+'</span>';
+      }).join("")+'</div>'+
       '<div class="co-badge"><div class="co-name">'+b.companyShort+'</div><div class="co-trade">'+b.trade+'</div></div>'+
     '</div>'+
     '<div class="tbl-scroll"><table>'+hdr+temp+band+techs+onBoard+nonOpp+needed+variance+ropps+roppNeeded+roppVar+roppPct+'</table></div>'+
-    '<div class="dots">'+ORDER.map(function(k,i){return'<span class="'+(i===idx?"on":"")+'" onclick="goTo('+i+')"></span>'}).join("")+'</div>'+
     '<div class="footer">'+
-      '<span>Live from ServiceTitan &middot; opportunities counted by job-type class &middot; ROPP tag minus Management Removed ROPP</span>'+
+      '<span>Live from ServiceTitan &middot; opportunities = the job\'s Opportunity flag &middot; '+(b.trade==="Plumbing"?"TROPP tag":"ROPP tag")+' minus Management Removed ROPP</span>'+
       '<span>Click a value in Techs Available / Calls Needed / Replacement Opps Needed to edit (PIN) &middot; Updated '+gen+'</span>'+
     '</div>'+
+    (classFallback?'<div class="fallback-note">&#9888; This company\'s ServiceTitan report doesn\'t include the Opportunity column yet, so opportunities are estimated from the job type\'s class. Add the "Opportunity" column to the report to switch to the real per-job flag.</div>':'')+
     (feedError?'<div style="margin-top:8px;font-size:12px;font-weight:700;color:#b91c1c">'+feedError+'</div>':'');
 }
 
-function nav(d){idx=(idx+d+ORDER.length)%ORDER.length;render()}
-function goTo(i){idx=i;render()}
-function togglePause(){paused=!paused;render()}
+function nav(d){idx=(idx+d+ORDER.length)%ORDER.length;localStorage.setItem(TAB_KEY,ORDER[idx]);render()}
+function goTo(i){idx=i;localStorage.setItem(TAB_KEY,ORDER[idx]);render()}
 
 // ── data feed ──
 async function fetchData(){
@@ -246,12 +243,10 @@ async function gate(){
   }
 }
 gate().then(refresh);
-setInterval(function(){if(!paused)nav(1)},ROTATE_SECONDS*1000);
 setInterval(refresh,REFRESH_MINUTES*60*1000);
 document.addEventListener("keydown",function(e){
   if(e.key==="ArrowRight")nav(1);
   else if(e.key==="ArrowLeft")nav(-1);
-  else if(e.key===" "){e.preventDefault();togglePause()}
 });
 </script>
 </body>
