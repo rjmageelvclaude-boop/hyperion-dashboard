@@ -364,12 +364,46 @@ def compute_day(company, day, jt_names=None):
     return m
 
 
+def compute_mtd(company):
+    """MTD revenue and sales: 1st of the month through YESTERDAY (tenant-local).
+
+    Today is deliberately excluded - the dashboard pairs these with today's live
+    numbers, and pacing runs on budgeted days completed (yesterday inclusive).
+    Recomputed from scratch every run so late/retroactive postings are picked up.
+    """
+    co = COMPANIES[company]
+    tenant = co["tenant"]
+    today = local_today(co["tz"])
+    if today.day == 1:
+        return {"mtdRevenue": 0.0, "mtdSales": 0.0, "mtdThrough": None}
+    first = today.replace(day=1)
+    yesterday = today - dt.timedelta(days=1)
+
+    # invoiceDate is a calendar date stored as midnight UTC - no tz shift
+    invoices = fetch_all(tenant, "/accounting/v2/tenant/{tenant}/invoices",
+                         {"invoicedOnOrAfter": first.strftime("%Y-%m-%dT00:00:00Z"),
+                          "invoicedOnBefore": today.strftime("%Y-%m-%dT00:00:00Z")},
+                         page_size=500, max_pages=100)
+    mtd_rev = sum(float(inv.get("subTotal") or 0) for inv in invoices)
+
+    # estimates sold within the local-time window covering the 1st .. yesterday
+    start, _ = local_day_window_utc(co["tz"], first)
+    _, end = local_day_window_utc(co["tz"], yesterday)
+    estimates = fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
+                          {"soldAfter": start, "soldBefore": end}, max_pages=100)
+    mtd_sales = sum(float(e.get("subtotal") or 0) for e in estimates)
+
+    return {"mtdRevenue": round(mtd_rev, 2), "mtdSales": round(mtd_sales, 2),
+            "mtdThrough": yesterday.isoformat()}
+
+
 # ---------------------------------------------------------------- public API
 def compute_current():
     out = {}
     for company, co in COMPANIES.items():
         day = local_today(co["tz"])
         m = compute_day(company, day)
+        m.update(compute_mtd(company))
         m["lastUpdated"] = dt.datetime.now().strftime("%a %b %d %Y %H:%M:%S") + " (live API)"
         out[company] = m
     return out

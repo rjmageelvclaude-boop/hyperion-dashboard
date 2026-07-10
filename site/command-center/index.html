@@ -35,7 +35,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#f6f8fb;min-
 .budget-item input:focus{border-color:var(--co)}
 .budget-item input.sm{font-size:13px;font-weight:600}
 .main{max-width:1140px;margin:0 auto;padding:20px 24px}
-.hero-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:22px}
+.hero-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
 .hero-card{background:#fff;border-radius:12px;padding:16px 20px;border:1px solid #e8ecf1;position:relative;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)}
 .hero-bar{position:absolute;top:0;left:0;right:0;height:3px}
 .hero-label{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
@@ -256,9 +256,19 @@ function render(){
   var plumbJBgt=gb(act,"plumbJobBudget");
   var roppBgt=gb(act,"hvacRoppsDailyBudget");
   var dailyRev=g("dailyRevenue"),dailySales=g("dailySales");
-  var mtdRev=gb(act,"mtdRevenueOverride")||0;
-  var mtdSales=gb(act,"mtdSalesOverride")||0;
-  var adjDaily=bdr>0?(monthlyBudget-mtdRev)/bdr:dailyRevBgt;
+  // MTD straight from ServiceTitan: 1st of month through yesterday (today excluded)
+  var liveCo=sd[act]||{};
+  var mtdLive=liveCo.mtdRevenue!=null;
+  var mtdRev=mtdLive?liveCo.mtdRevenue:(gb(act,"mtdRevenueOverride")||0);
+  var mtdSales=liveCo.mtdSales!=null?liveCo.mtdSales:(gb(act,"mtdSalesOverride")||0);
+  var mtdThrough=liveCo.mtdThrough||null;
+  // budgeted days completed = through yesterday; days left includes today
+  var bdc=Math.max(weekdaysElapsed(vdYear,vdMonth,vdDay-1)-countNonBudgetedInRange(act,vdYear,vdMonth,vdDay-1),0);
+  var bdLeft=bd-bdc;
+  var budgetPace=bd>0?monthlyBudget*bdc/bd:0;
+  var planPace=bd>0?monthlyPlan*bdc/bd:0;
+  var adjDaily=bdLeft>0?Math.max((monthlyBudget-mtdRev)/bdLeft,0):0;
+  var adjPlan=bdLeft>0?Math.max((monthlyPlan-mtdRev)/bdLeft,0):0;
   var flipRate=g("hvacRoppsRan")>0?(g("tglsSet")/g("hvacRoppsRan"))*100:0;
   var hvacRan=g("hvacMaintenanceRan")+g("hvacDemandRan");
   var hvacAvg=hvacRan>0?g("hvacServiceRevenue")/hvacRan:0;
@@ -276,8 +286,6 @@ function render(){
     {k:"hvacJobBudget",l:"HVAC Job Budget",type:"number"},
     ...(co.plumb?[{k:"plumbJobBudget",l:"Plumbing Job Budget",type:"number"}]:[]),
     {k:"hvacRoppsDailyBudget",l:"ROPPs Daily Budget",type:"number"},
-    {k:"mtdRevenueOverride",l:"MTD Revenue Override",type:"number"},
-    {k:"mtdSalesOverride",l:"MTD Sales Override",type:"number"},
     {k:"nonBudgetedDays",l:"Non Budgeted Days (YYYY-MM-DD, comma separated)",type:"text"},
   ];
 
@@ -289,9 +297,15 @@ function render(){
     var scc=pp>=100?"#16a34a":pp>=80?"#eab308":pp>0?"#ef4444":"#94a3b8";
     pc2+='<div class="port-card '+(on?"on":"off")+'" onclick="act=\''+k+'\';render()" style="'+(on?"background:"+cc.grad:"")+'">'+(!on?'<div class="bar" style="background:'+cc.color+'"></div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;color:'+(on?"rgba(255,255,255,.8)":"#64748b")+'">'+cc.short+'</div><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:18px;font-weight:800;color:'+(on?"#fff":"#0f172a")+'">$'+rv.toLocaleString()+'</div><div style="font-size:11px;margin-top:2px;color:'+(on?"rgba(255,255,255,.7)":"#94a3b8")+'">$'+sl.toLocaleString()+' sales</div></div><div><div style="font-size:20px;font-weight:800;color:'+(on?"#fff":scc)+'">'+pp+'%</div><div style="font-size:9px;text-transform:uppercase;text-align:center;color:'+(on?"rgba(255,255,255,.6)":"#94a3b8")+'">to budget</div></div></div></div>';}
 
-  var budgetPct=monthlyBudget>0?Math.round(mtdRev/monthlyBudget*100):0;
-  var planPct=monthlyPlan>0?Math.round(mtdRev/monthlyPlan*100):0;
-  var mtdCompare='<div class="hero-compare"><span style="color:'+(budgetPct>=100?"#16a34a":budgetPct>=80?"#ca8a04":"#ef4444")+'">'+budgetPct+'% to budget</span>'+(monthlyPlan>0?'<span style="color:'+(planPct>=100?"#16a34a":planPct>=80?"#ca8a04":"#ef4444")+'">'+planPct+'% to plan</span>':'')+'</div>';
+  // MTD pacing: where MTD should be after bdc completed budgeted days
+  function paceLine(label,target){
+    if(!(target>0))return"";
+    var diff=mtdRev-target,ok=diff>=0,pct=Math.round(mtdRev/target*100);
+    return'<div style="font-size:10px;margin-top:3px;font-weight:600;color:'+(ok?"#16a34a":"#ef4444")+'">'+label+' pace $'+Math.round(target).toLocaleString()+' · '+(ok?"+":"−")+'$'+Math.abs(Math.round(diff)).toLocaleString()+' ('+pct+'%)</div>';
+  }
+  var mtdCompare='<div style="margin-top:4px">'+paceLine("Budget",budgetPace)+paceLine("Plan",planPace)+'</div>';
+  var thruD=mtdThrough?new Date(mtdThrough+"T12:00:00"):null;
+  var mtdSub=thruD?(thruD.toLocaleDateString("en-US",{month:"short"})+" 1 – "+thruD.toLocaleDateString("en-US",{month:"short",day:"numeric"})+(mtdLive?" · live from ST":"")):(mtdLive?"First day of month":"Manual override");
 
   // Sections
   var ccB=divd("HVAC")+mrow("HVAC Job Budget",hvacJBgt,"#",undefined,null)+mrow("HVAC Jobs on Board Today",g("hvacJobsOnBoard"),"#",hvacJBgt,"hvacJobsOnBoard")+mrow("HVAC Capacity",hvacJBgt>0?(g("hvacJobsOnBoard")/hvacJBgt*100):0,"%",undefined,null);
@@ -330,8 +344,10 @@ function render(){
     '<div class="main"><div class="hero-grid">'+
     hero("Today's Revenue",dailyRev,"$",dailyRevBgt,null,true)+
     hero("Today's Sales",dailySales,"$",dailySalesBgt,null,true)+
-    hero("MTD Revenue",mtdRev,"$",monthlyBudget,monthlyPlan>0?"Plan: $"+monthlyPlan.toLocaleString():"Set monthly plan in budgets",true,mtdCompare)+
-    hero("Adjusted Daily Budget",adjDaily,"$",null,bdr>0?bdr+" budgeted days remaining":"Last budgeted day",false)+
+    hero("MTD Revenue",mtdRev,"$",monthlyBudget,mtdSub,true,mtdCompare)+
+    hero("MTD Sales",mtdSales,"$",null,mtdSub,false)+
+    hero("Adjusted Daily Budget",adjDaily,"$",null,bdLeft>0?bdLeft+" budgeted days left (incl. today)":"Month complete",false)+
+    (monthlyPlan>0?hero("Adjusted Daily Plan",adjPlan,"$",null,bdLeft>0?bdLeft+" budgeted days left (incl. today)":"Month complete",false):hero("Adjusted Daily Plan",0,"$",null,"Set Monthly Plan in budgets",false))+
     '</div><div class="two-col"><div>'+
     sec("Call Center","📞",c,co.lg,null,sparkHdr+ccB)+
     sec("TGL","🔄",c,co.lg,flipRate.toFixed(1)+"% Flip",tB)+
