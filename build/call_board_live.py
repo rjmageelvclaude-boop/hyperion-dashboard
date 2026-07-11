@@ -10,7 +10,7 @@ Five boards, each a (company, trade) pair scoped to specific business units:
     ultimate-plumbing  ULT   Plumbing - Service, Plumbing - Maintenance
     russett-hvac       RUS   HVAC - Service, HVAC - Maintenance
 
-Per board, for each of the next 4 weekdays (starting today, company-local):
+Per board, for each of the next 4 calendar days (starting today, company-local):
   - opps / nonOpps = calls on board (jobs with an appointment that day, not
     canceled, in the board's BUs) split by ServiceTitan's PER-JOB Opportunity
     flag. The flag is not a field on the job record, but it is fully determined
@@ -33,6 +33,11 @@ Techs available / calls needed / replacement opps needed are manual inputs
 entered on the dashboard itself (shared through the Apps Script budget store);
 they are not computed here.
 
+The dashboard also carries an "Upcoming Jobs" view per company: calls on the
+board by day and business unit for the next 60 days (appointments joined to
+jobs; canceled appointments/jobs excluded), with yesterday's snapshot kept on
+disk so the page can show day-over-day changes.
+
 CLI smoke test:
     py build/call_board_live.py                # all boards
     py build/call_board_live.py sierra-hvac    # one board (still fetches its tenant)
@@ -48,28 +53,50 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-from command_center_live import fetch_all, local_day_window_utc, local_today, _load_json, _save_json
+from command_center_live import (fetch_all, local_day_window_utc, local_today,
+                                 _load_json, _save_json, _utc_offset_hours)
 
 CONFIG_CACHE = os.path.join(ROOT, "data", "call-board-st-config.json")
+UPCOMING_HISTORY = os.path.join(ROOT, "data", "call-board-upcoming-history.json")
 CONFIG_TTL_HOURS = 24 * 7   # job-type soldThreshold cache
 BOARD_DAYS = 4
 DEFAULT_SOLD_THRESHOLD = 100.0
+UPCOMING_DAYS = 60
+UPCOMING_HISTORY_KEEP_DAYS = 35
 
 COMPANIES = {
     "sierra": {
         "tenant": "SIE", "tz": "pacific",
         "name": "Sierra Air Conditioning & Plumbing", "short": "Sierra",
         "weather": {"lat": 36.17, "lon": -115.14, "tz": "America/Los_Angeles"},  # Las Vegas
+        # Upcoming Jobs view: business-unit columns, in display order
+        "cols": [
+            {"key": "hvac_svc", "label": "Service", "group": "HVAC", "bu": 333},
+            {"key": "hvac_mnt", "label": "Maint.", "group": "HVAC", "bu": 342817560},
+            {"key": "plumb_drn", "label": "Drains", "group": "Plumbing", "bu": 595105985},
+            {"key": "plumb_mnt", "label": "Maint.", "group": "Plumbing", "bu": 354},
+            {"key": "plumb_svc", "label": "Service", "group": "Plumbing", "bu": 353},
+        ],
     },
     "ultimate": {
         "tenant": "ULT", "tz": "mountain",
         "name": "Ultimate Heating Air & Plumbing", "short": "Ultimate",
         "weather": {"lat": 43.615, "lon": -116.202, "tz": "America/Boise"},      # Boise
+        "cols": [
+            {"key": "hvac_svc", "label": "Service", "group": "HVAC", "bu": 2691},
+            {"key": "hvac_mnt", "label": "Maint.", "group": "HVAC", "bu": 2692},
+            {"key": "plumb_mnt", "label": "Maint.", "group": "Plumbing", "bu": 128196},
+            {"key": "plumb_svc", "label": "Service", "group": "Plumbing", "bu": 8450},
+        ],
     },
     "russett": {
         "tenant": "RUS", "tz": "arizona",
         "name": "Russett Southwest", "short": "Russett",
         "weather": {"lat": 32.222, "lon": -110.975, "tz": "America/Phoenix"},    # Tucson
+        "cols": [
+            {"key": "hvac_svc", "label": "Service", "group": "HVAC", "bu": 221},
+            {"key": "hvac_mnt", "label": "Maint.", "group": "HVAC", "bu": 53208412},
+        ],
     },
 }
 
@@ -113,13 +140,9 @@ BOARDS = {
 
 
 def board_days(tz, n=BOARD_DAYS):
-    """The next n weekdays starting today (company-local); weekends skipped."""
-    days, d = [], local_today(tz)
-    while len(days) < n:
-        if d.weekday() < 5:
-            days.append(d)
-        d += dt.timedelta(days=1)
-    return days
+    """The next n calendar days starting today (company-local), weekends included."""
+    today = local_today(tz)
+    return [today + dt.timedelta(days=i) for i in range(n)]
 
 
 def job_type_thresholds(tenant):
@@ -165,6 +188,74 @@ def _weather(company):
         return None
 
 
+# ------------------------------------------------------------ upcoming jobs
+def _parse_st_ts(ts):
+    """ServiceTitan UTC timestamp, with or without fractional seconds."""
+    return dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+
+
+def compute_upcoming(company, n_days=UPCOMING_DAYS):
+    """Calls on the board by day and business unit for the next n_days
+    (company-local, starting today). One count per (day, job): a job appears
+    on each day it has a non-canceled appointment; canceled jobs excluded."""
+    co = COMPANIES[company]
+    tenant = co["tenant"]
+    tz = co["tz"]
+    today = local_today(tz)
+    last_day = today + dt.timedelta(days=n_days - 1)
+    start, _ = local_day_window_utc(tz, today)
+    _, end = local_day_window_utc(tz, last_day)
+    bu_key = {c["bu"]: c["key"] for c in co["cols"]}
+
+    jobs = fetch_all(tenant, "/jpm/v2/tenant/{tenant}/jobs",
+                     {"appointmentStartsOnOrAfter": start, "appointmentStartsBefore": end},
+                     page_size=200, max_pages=200)
+    job_by_id = {j["id"]: j for j in jobs
+                 if j.get("jobStatus") != "Canceled" and j.get("businessUnitId") in bu_key}
+
+    appts = fetch_all(tenant, "/jpm/v2/tenant/{tenant}/appointments",
+                      {"startsOnOrAfter": start, "startsBefore": end},
+                      page_size=500, max_pages=200)
+
+    by_day = {(today + dt.timedelta(days=i)).isoformat(): {c["key"]: 0 for c in co["cols"]}
+              for i in range(n_days)}
+    seen = set()
+    for a in appts:
+        if a.get("status") == "Canceled":
+            continue
+        job = job_by_id.get(a.get("jobId"))
+        if not job:
+            continue
+        try:
+            ts = _parse_st_ts(a["start"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        local_date = (ts + dt.timedelta(hours=_utc_offset_hours(tz, ts.date()))).date()
+        iso = local_date.isoformat()
+        if iso not in by_day or (iso, job["id"]) in seen:
+            continue
+        seen.add((iso, job["id"]))
+        by_day[iso][bu_key[job["businessUnitId"]]] += 1
+
+    # day-over-day change tracking: keep one snapshot per local day on disk;
+    # the page compares against the most recent snapshot before today
+    hist = _load_json(UPCOMING_HISTORY, {})
+    mine = hist.setdefault(company, {})
+    mine[today.isoformat()] = by_day
+    cutoff = (today - dt.timedelta(days=UPCOMING_HISTORY_KEEP_DAYS)).isoformat()
+    hist[company] = {k: v for k, v in mine.items() if k >= cutoff}
+    _save_json(UPCOMING_HISTORY, hist)
+    prev_stamp = max((k for k in hist[company] if k < today.isoformat()), default=None)
+
+    return {
+        "cols": [{"key": c["key"], "label": c["label"], "group": c["group"]} for c in co["cols"]],
+        "days": [{"date": iso, "dow": dt.date.fromisoformat(iso).strftime("%A"),
+                  "counts": counts} for iso, counts in sorted(by_day.items())],
+        "prevDate": prev_stamp,
+        "prevByDay": hist[company].get(prev_stamp) if prev_stamp else None,
+    }
+
+
 # --------------------------------------------------------------- metric core
 def _board_jobs(tenant, tz, day):
     """Non-canceled jobs with an appointment starting on the given local day."""
@@ -180,11 +271,16 @@ def compute(only_board=None):
         raise ValueError(f"Unknown board '{only_board}'. Known: {', '.join(BOARDS)}")
 
     out = {"generatedAt": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-           "boards": {}, "weather": {}}
+           "boards": {}, "weather": {}, "upcoming": {}}
 
     companies = {b["company"] for b in wanted.values()}
     for company in companies:
         out["weather"][company] = _weather(company)
+        try:
+            out["upcoming"][company] = compute_upcoming(company)
+        except Exception as e:
+            print(f"upcoming jobs failed for {company}: {e}", file=sys.stderr)
+            out["upcoming"][company] = None
 
     # One jobs fetch per (tenant, day), shared by every board on that tenant.
     day_jobs = {}
