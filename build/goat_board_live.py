@@ -38,7 +38,9 @@ import json
 import os
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -46,6 +48,8 @@ sys.path.insert(0, HERE)
 
 import tech_board_live as tb
 from command_center_live import fetch_all, local_today, _load_json, _save_json
+
+_hist_lock = threading.Lock()
 
 HISTORY_FILE = os.path.join(ROOT, "data", "goat-board-history.json")
 SITE_DIR = os.path.join(ROOT, "site")
@@ -125,10 +129,14 @@ def compute_live_company(company, deadline=None, progress=None):
         result[key] = techs
         if key != current_key:
             month_end = dt.date(year + (month == 12), month % 12 + 1, 1)
-            co_cache[key] = {"at": time.time(), "techs": techs,
-                             "final": (today - month_end).days >= tb.MONTH_FREEZE_DAYS}
-            cache[company] = co_cache
-            _save_json(HISTORY_FILE, cache)
+            rec = {"at": time.time(), "techs": techs,
+                   "final": (today - month_end).days >= tb.MONTH_FREEZE_DAYS}
+            # Companies backfill in parallel threads - reload, merge, save so
+            # one company's writes don't clobber the other's.
+            with _hist_lock:
+                merged = _load_json(HISTORY_FILE, {})
+                merged.setdefault(company, {})[key] = rec
+                _save_json(HISTORY_FILE, merged)
         if progress:
             progress(f"goat/{company}", key, time.time() - t0)
     return result, roster, complete
@@ -138,8 +146,10 @@ def live_rows(deadline=None, progress=None):
     """{'silo': rows, 'plumbInstall': rows} ranked later; plus complete flag."""
     rows = {"silo": [], "plumbInstall": []}
     complete = True
-    for company in LIVE_TEAMS:
-        per_month, roster, ok = compute_live_company(company, deadline, progress)
+    with ThreadPoolExecutor(max_workers=len(LIVE_TEAMS)) as pool:
+        results = list(pool.map(
+            lambda c: (c, compute_live_company(c, deadline, progress)), LIVE_TEAMS))
+    for company, (per_month, roster, ok) in results:
         complete = complete and ok
         pal = PALETTE[company]
         for tid, info in roster.items():

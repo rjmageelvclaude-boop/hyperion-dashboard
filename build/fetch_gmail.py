@@ -44,7 +44,14 @@ M = imaplib.IMAP4_SSL("imap.gmail.com")
 M.login(addr, pw)
 M.select("INBOX", readonly=True)
 
-_, ids = M.search(None, "ALL")
+# Gmail-only fast path: have the server find spreadsheet attachments instead
+# of downloading 200 full messages to look inside each one (~5 min per run).
+# Zero matches is a real answer (reports not emailed yet) - only fall back to
+# the full scan if the extension itself fails.
+try:
+    _, ids = M.search(None, "X-GM-RAW", '"has:attachment (filename:xlsx OR filename:xls)"')
+except imaplib.IMAP4.error:
+    _, ids = M.search(None, "ALL")
 msg_ids = ids[0].split()[-LOOKBACK:][::-1]  # newest first
 
 found = {}

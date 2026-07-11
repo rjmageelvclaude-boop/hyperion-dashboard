@@ -92,18 +92,23 @@ jobs:
               echo "Missing report file(s) - deploying last committed data."
             fi
           ) > logs/contest.log 2>&1 &
+          contest_pid=$!
 
           # Live API boards, staggered a touch so eight processes don't hit
           # the auth server in the same instant.
+          board_pids=""
           for board in command_center call_board ca_board tech_board plumb_board csr_board install_board silo_board; do
             python "build/${board}_refresh.py" > "logs/${board}.log" 2>&1 \
               || echo "${board} refresh failed - deploying cached data.json" >> "logs/${board}.log" &
+            board_pids="$board_pids $!"
             sleep 2
           done
-          wait
+          wait $board_pids
 
-          # GOAT board reads the other boards' data.json - always last
+          # GOAT board reads the other boards' data.json - after the boards,
+          # overlapping the contest lane (it doesn't touch Gmail data)
           python build/goat_board_refresh.py || echo "GOAT board refresh failed - deploying cached data.json"
+          wait $contest_pid
 
           for f in logs/*.log; do echo "::group::$f"; cat "$f"; echo "::endgroup::"; done
           rm -rf secrets logs
