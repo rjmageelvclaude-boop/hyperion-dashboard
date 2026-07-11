@@ -28,7 +28,9 @@ import datetime as dt
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -131,25 +133,39 @@ def local_today(tz):
 
 
 # ---------------------------------------------------------------- API paging
+# Pages fetched concurrently per fetch_all call once page 1 confirms there is
+# more; the client's process-wide semaphore keeps total in-flight requests sane.
+PAGE_CONCURRENCY = max(1, int(os.environ.get("ST_PAGE_CONCURRENCY", "4")))
+
 def fetch_all(tenant, path, params, page_size=200, max_pages=40, retries=3):
-    items, page = [], 1
-    while page <= max_pages:
+    def get_page(page):
         p = dict(params, pageSize=page_size, page=page)
         last_err = None
         for attempt in range(retries):
             try:
-                r = st_get(tenant, path, params=p)
-                last_err = None
-                break
+                return st_get(tenant, path, params=p)
             except Exception as e:
                 last_err = e
                 time.sleep(2 * (attempt + 1))
-        if last_err is not None:
-            raise RuntimeError(f"{path} page {page} failed after {retries} tries: {last_err}")
-        items.extend(r.get("data", []))
-        if not r.get("hasMore"):
-            break
-        page += 1
+        raise RuntimeError(f"{path} page {page} failed after {retries} tries: {last_err}")
+
+    first = get_page(1)
+    items = list(first.get("data") or [])
+    if not first.get("hasMore") or max_pages < 2:
+        return items
+    # Concurrent waves; a page past the end just comes back empty/hasMore=False.
+    next_page = 2
+    with ThreadPoolExecutor(max_workers=PAGE_CONCURRENCY) as pool:
+        while next_page <= max_pages:
+            wave = range(next_page, min(next_page + PAGE_CONCURRENCY, max_pages + 1))
+            done = False
+            for r in pool.map(get_page, wave):
+                items.extend(r.get("data") or [])
+                if not r.get("hasMore"):
+                    done = True
+            if done:
+                break
+            next_page = wave[-1] + 1
     return items
 
 
@@ -163,7 +179,8 @@ def _load_json(path, default):
 
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
+    # Unique tmp name: config caches are shared by parallel threads/processes.
+    tmp = f"{path}.{os.getpid()}-{threading.get_ident()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f)
     os.replace(tmp, path)
@@ -235,7 +252,8 @@ def compute_day(company, day, jt_names=None):
     # -- jobs with an appointment today (the "board")
     board = [decorate(j) for j in fetch_all(
         tenant, "/jpm/v2/tenant/{tenant}/jobs",
-        {"appointmentStartsOnOrAfter": start, "appointmentStartsBefore": end})]
+        {"appointmentStartsOnOrAfter": start, "appointmentStartsBefore": end},
+        page_size=500)]
     jobs_by_id = {j["id"]: j for j in board}
 
     def count(pred):
@@ -272,14 +290,14 @@ def compute_day(company, day, jt_names=None):
     # -- TGLs set today (jobs created today with a TGL job type)
     created = [decorate(j) for j in fetch_all(
         tenant, "/jpm/v2/tenant/{tenant}/jobs",
-        {"createdOnOrAfter": start, "createdBefore": end})]
+        {"createdOnOrAfter": start, "createdBefore": end}, page_size=500)]
     tgl_created = [j for j in created if j["_tgl_lead"] and j.get("jobStatus") != "Canceled"]
     m["tglsSet"] = len(tgl_created)
     m["tglsSetSameDay"] = sum(1 for j in tgl_created if j["id"] in jobs_by_id)
 
     # -- estimates sold today
     estimates = fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
-                          {"soldAfter": start, "soldBefore": end})
+                          {"soldAfter": start, "soldBefore": end}, page_size=500)
     missing = sorted({e["jobId"] for e in estimates if e.get("jobId") and e["jobId"] not in jobs_by_id})
     for i in range(0, len(missing), 50):
         for j in fetch_all(tenant, "/jpm/v2/tenant/{tenant}/jobs",
@@ -411,7 +429,8 @@ def compute_mtd(company):
     start, _ = local_day_window_utc(co["tz"], first)
     _, end = local_day_window_utc(co["tz"], yesterday)
     estimates = fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
-                          {"soldAfter": start, "soldBefore": end}, max_pages=100)
+                          {"soldAfter": start, "soldBefore": end},
+                          page_size=500, max_pages=100)
     mtd_sales = sum(float(e.get("subtotal") or 0) for e in estimates)
 
     return {"mtdRevenue": round(mtd_rev, 2), "mtdSales": round(mtd_sales, 2),
@@ -420,14 +439,14 @@ def compute_mtd(company):
 
 # ---------------------------------------------------------------- public API
 def compute_current():
-    out = {}
-    for company, co in COMPANIES.items():
-        day = local_today(co["tz"])
-        m = compute_day(company, day)
+    def one(company):
+        co = COMPANIES[company]
+        m = compute_day(company, local_today(co["tz"]))
         m.update(compute_mtd(company))
         m["lastUpdated"] = dt.datetime.now().strftime("%a %b %d %Y %H:%M:%S") + " (live API)"
-        out[company] = m
-    return out
+        return company, m
+    with ThreadPoolExecutor(max_workers=len(COMPANIES)) as pool:
+        return dict(pool.map(one, COMPANIES))
 
 
 def _history_days(tz, n=HISTORY_WEEKDAYS):

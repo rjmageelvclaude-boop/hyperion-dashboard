@@ -189,7 +189,7 @@ def sync_cache(company, log=print):
             to = min(_plus_days(frm, BACKFILL_CHUNK_DAYS), FAR_FUTURE)
             pulled = fetch_all(tenant, "/jpm/v2/tenant/{tenant}/jobs",
                                {"completedOnOrAfter": frm, "completedBefore": to},
-                               page_size=200, max_pages=400)
+                               page_size=500, max_pages=400)
             for j in pulled:
                 if j.get("businessUnitId") in sales_bus:
                     jobs[str(j["id"])] = _slim_job(j)
@@ -201,7 +201,7 @@ def sync_cache(company, log=print):
     else:
         since = _minus_minutes(sync["jobs_synced"], SYNC_OVERLAP_MIN)
         pulled = fetch_all(tenant, "/jpm/v2/tenant/{tenant}/jobs",
-                           {"modifiedOnOrAfter": since}, page_size=200,
+                           {"modifiedOnOrAfter": since}, page_size=500,
                            max_pages=200)
         changed = 0
         for j in pulled:
@@ -234,7 +234,7 @@ def sync_cache(company, log=print):
                 to = min(_plus_days(frm, BACKFILL_CHUNK_DAYS), FAR_FUTURE)
                 pulled = fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
                                    {param_lo: frm, param_hi: to},
-                                   page_size=200, max_pages=600)
+                                   page_size=500, max_pages=600)
                 for e in pulled:
                     ests[str(e["id"])] = _slim_estimate(e)
                 frm = sync[mark] = to
@@ -247,7 +247,7 @@ def sync_cache(company, log=print):
         since = _minus_minutes(sync["ests_synced"], SYNC_OVERLAP_MIN)
         pulled = fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
                            {"modifiedOnOrAfter": since, "active": "Any"},
-                           page_size=200, max_pages=200)
+                           page_size=500, max_pages=200)
         for e in pulled:
             ests[str(e["id"])] = _slim_estimate(e)
         if pulled:
