@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Employee Scorecard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f3f5; --chrome-ink:#111; --chrome-ink-2:#5c6b78; --panel:#fff; --chrome-line:#d5dae0;
+  --ink:#1c2733; --ink-2:#54646f; --ink-3:#8595a1; --line:#d8e0e6; --line-soft:#eaeff3;
+  --accent:#155e8a; --accent-deep:#0e4265; --accent-soft:#e4eef5;
+  --good:#1a7f4b; --good-soft:#e3f2e9; --warn:#9a6400; --warn-soft:#f7eeda;
+  --bad:#b3261e; --bad-soft:#f9e7e5;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--chrome-ink);min-height:100vh}
+
+/* ---------- app chrome (hidden on print) ---------- */
+.toolbar{max-width:920px;margin:0 auto;padding:16px 16px 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.brand{font-weight:900;letter-spacing:.5px;font-size:15px;text-transform:uppercase}
+.brand a{color:inherit;text-decoration:none}
+.brand span{color:var(--chrome-ink-2);font-weight:700}
+.toolbar .spacer{flex:1}
+select,button,input[type=password]{font:inherit;font-size:13px;font-weight:700;color:var(--chrome-ink);
+  background:var(--panel);border:1px solid var(--chrome-line);border-radius:8px;padding:8px 10px}
+select:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button{cursor:pointer}
+.print-btn{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.status-line{max-width:920px;margin:8px auto 0;padding:0 16px;font-size:12px;font-weight:600;color:var(--chrome-ink-2)}
+
+/* ---------- the sheet ---------- */
+.sheet-wrap{max-width:920px;margin:14px auto 48px;padding:0 16px}
+.sheet{background:#fff;color:var(--ink);border-radius:4px;
+  box-shadow:0 2px 6px rgba(15,30,45,.12),0 14px 34px rgba(15,30,45,.14);
+  padding:42px 48px 34px;font-variant-numeric:tabular-nums}
+
+.masthead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  border-bottom:3px solid var(--co,var(--ink));padding-bottom:14px}
+.masthead h1{font-family:Rockwell,'Roboto Slab',Georgia,serif;font-size:25px;font-weight:700;
+  letter-spacing:.02em;line-height:1.1;text-wrap:balance}
+.masthead .co-line{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-2);
+  margin-bottom:6px;font-weight:700}
+.masthead .meta{text-align:right;font-size:11.5px;color:var(--ink-2);line-height:1.7;font-weight:600}
+.masthead .meta b{color:var(--ink)}
+
+.who{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:16px 0 4px;flex-wrap:wrap}
+.who .name{font-size:21px;font-weight:900}
+.who .role{font-size:12.5px;color:var(--ink-2);font-weight:600;margin-top:2px}
+.ranks{display:flex;gap:8px;flex-wrap:wrap}
+.rank-chip{font-size:11px;color:var(--ink-2);background:var(--line-soft);border-radius:20px;
+  padding:4px 11px;white-space:nowrap;font-weight:600}
+.rank-chip b{color:var(--ink)}
+
+.section-label{font-size:10.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--accent-deep);margin:22px 0 8px;display:flex;align-items:center;gap:10px}
+.section-label::after{content:"";flex:1;height:1px;background:var(--line)}
+
+table.kpi{width:100%;border-collapse:collapse;font-size:13px}
+.kpi th{text-align:right;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:800;padding:6px 10px;border-bottom:1.5px solid var(--ink)}
+.kpi th:first-child{text-align:left;padding-left:2px}
+.kpi td{padding:8px 10px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap;font-weight:600}
+.kpi td:first-child{text-align:left;font-weight:800;padding-left:2px}
+.kpi td.goal{color:var(--ink-2)}
+.kpi .st{text-align:center;padding-right:2px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;border-radius:4px;
+  padding:3px 8px;letter-spacing:.02em}
+.chip.ahead{color:var(--good);background:var(--good-soft)}
+.chip.watch{color:var(--warn);background:var(--warn-soft)}
+.chip.behind{color:var(--bad);background:var(--bad-soft)}
+.chip.neutral{color:var(--ink-2);background:var(--line-soft)}
+
+/* ---------- pay ---------- */
+.pay-locked{border:1.5px dashed var(--line);border-radius:8px;padding:18px;display:flex;gap:10px;
+  align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2);font-weight:600}
+.pay-locked .err{color:var(--bad);font-weight:700}
+.pay-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.pay-tile{border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.pay-tile .l{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:800}
+.pay-tile .v{font-size:18px;font-weight:900;margin-top:3px}
+.pay-tile .s{font-size:11px;color:var(--ink-2);margin-top:2px;font-weight:600}
+.pay-tile.hero{background:var(--accent-soft);border-color:var(--accent)}
+.pay-tile.hero .v{color:var(--accent-deep)}
+.pace .track{position:relative;height:14px;border-radius:7px;background:var(--line-soft);margin-top:24px}
+.pace .fill{position:absolute;inset:0 auto 0 0;border-radius:7px;background:var(--accent);max-width:100%}
+.pace .tick{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--ink)}
+.pace .tick-label{position:absolute;top:-22px;transform:translateX(-50%);font-size:10px;
+  color:var(--ink-2);white-space:nowrap;font-weight:600}
+.pace .legend{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-2);
+  margin-top:7px;font-weight:600;gap:10px;flex-wrap:wrap}
+.pace .legend b{color:var(--ink)}
+.pay-note{font-size:10.5px;color:var(--ink-3);margin-top:10px;line-height:1.5;font-weight:600}
+
+/* ---------- notes & signatures ---------- */
+.notes{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.note-box .h{font-size:11.5px;font-weight:800;margin-bottom:2px}
+.ruled{height:66px;background:repeating-linear-gradient(to bottom,transparent 0 21px,var(--line) 21px 22px)}
+.ack{font-size:10.5px;color:var(--ink-2);margin-top:14px;line-height:1.55;font-weight:600}
+.signatures{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:24px}
+.sig .line{border-bottom:1.5px solid var(--ink);height:34px}
+.sig .cap{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-2);margin-top:5px;font-weight:600}
+.sheet-footer{display:flex;justify-content:space-between;gap:16px;margin-top:20px;padding-top:10px;
+  border-top:1px solid var(--line);font-size:9.5px;color:var(--ink-3);font-weight:600;flex-wrap:wrap}
+.sheet-footer .conf{font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.loading{max-width:920px;margin:60px auto;text-align:center;color:var(--chrome-ink-2);font-weight:700}
+
+@media (max-width:640px){
+  .sheet{padding:26px 20px}
+  .pay-grid{grid-template-columns:1fr 1fr}
+  .notes,.signatures{grid-template-columns:1fr}
+  .masthead{flex-direction:column}
+  .masthead .meta{text-align:left}
+}
+
+@media print{
+  @page{size:letter;margin:.45in}
+  body{background:#fff}
+  .toolbar,.status-line{display:none}
+  .sheet-wrap{max-width:none;margin:0;padding:0}
+  .sheet{box-shadow:none;border-radius:0;padding:0}
+  .chip{border:1px solid currentColor}
+  .pay-section.locked{display:none}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="brand"><a href="../">Hyperion</a> <span>· Scorecard</span></div>
+  <div class="spacer"></div>
+  <select id="sel-role" aria-label="Role" style="display:none"></select>
+  <select id="sel-company" aria-label="Company"></select>
+  <select id="sel-emp" aria-label="Employee"></select>
+  <button type="button" class="print-btn" onclick="window.print()">Print scorecard</button>
+</div>
+<p class="status-line" id="status-line"></p>
+
+<div class="loading" id="loading">Loading scorecard data…</div>
+
+<div class="sheet-wrap" id="sheet-wrap" style="display:none">
+<div class="sheet" id="sheet">
+
+  <div class="masthead">
+    <div>
+      <div class="co-line" id="m-co"></div>
+      <h1>Performance Scorecard</h1>
+    </div>
+    <div class="meta" id="m-meta"></div>
+  </div>
+
+  <div class="who">
+    <div>
+      <div class="name" id="m-name"></div>
+      <div class="role" id="m-role"></div>
+    </div>
+    <div class="ranks" id="m-ranks"></div>
+  </div>
+
+  <div class="section-label">Performance</div>
+  <table class="kpi">
+    <thead>
+      <tr><th>Metric</th><th>This Pay Week</th><th>MTD</th><th>YTD</th><th>Goal</th><th style="text-align:center">Status</th></tr>
+    </thead>
+    <tbody id="kpi-body"></tbody>
+  </table>
+
+  <div class="pay-section locked" id="pay-section">
+    <div class="section-label">Pay Pacing</div>
+    <div id="pay-body"></div>
+  </div>
+
+  <div class="section-label">Review Notes</div>
+  <div class="notes">
+    <div class="note-box"><div class="h">Wins this period / manager comments</div><div class="ruled"></div></div>
+    <div class="note-box"><div class="h">Focus for next period</div><div class="ruled"></div></div>
+  </div>
+
+  <div class="section-label">Sign-Off</div>
+  <p class="ack">We reviewed this scorecard together. Goals for the next period were discussed and noted above.
+  Figures are drawn from ServiceTitan as of the print date and may adjust as jobs are completed, invoiced or
+  corrected.</p>
+  <div class="signatures">
+    <div class="sig"><div class="line"></div><div class="cap"><span>Employee signature</span><span>Date</span></div></div>
+    <div class="sig"><div class="line"></div><div class="cap"><span>Manager signature</span><span>Date</span></div></div>
+  </div>
+
+  <div class="sheet-footer">
+    <span class="conf" id="m-conf">Internal document</span>
+    <span id="m-gen"></span>
+  </div>
+
+</div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let DATA = null, PAY = null;   // PAY = decrypted {employees, targets}, memory only
+
+const fmt = {
+  money:  v => "$" + Math.round(v || 0).toLocaleString(),
+  money0: v => "$" + Math.round(v || 0).toLocaleString(),
+  int:    v => (v == null ? "—" : Math.round(v).toLocaleString()),
+  pct:    v => (v == null ? "—" : (+v).toFixed(1).replace(/\.0$/, "") + "%"),
+};
+const money2 = v => "$" + (v || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+function chip(kind, text){
+  const glyph = {ahead:"▲", onpace:"●", watch:"◆", behind:"▼"}[kind];
+  const cls = kind === "onpace" ? "neutral" : kind;
+  return `<span class="chip ${cls}">${glyph} ${text}</span>`;
+}
+
+function goalFor(role, key){
+  let g = ((DATA.goals || {})[role] || {})[key];
+  if (g == null) return null;
+  if (typeof g === "number") g = {type: "threshold", value: g};
+  return (g && typeof g.value === "number") ? g : null;
+}
+
+// status vs goal: threshold -> YTD value against it; annual -> YTD paced by elapsed year
+function statusChip(goal, ytdVal){
+  if (!goal || ytdVal == null) return "";
+  const target = goal.type === "annual" ? goal.value * DATA.yearElapsed : goal.value;
+  if (!target) return "";
+  const r = ytdVal / target;
+  if (r >= 1.02) return chip("ahead", "Ahead");
+  if (r >= 0.97) return chip("onpace", "On pace");
+  if (r >= 0.85) return chip("watch", "Watch");
+  return chip("behind", "Behind");
+}
+
+function options(sel, items){
+  sel.innerHTML = items.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+}
+
+function currentEmp(){
+  return DATA.employees.find(e =>
+    e.role === $("sel-role").value &&
+    e.company === $("sel-company").value &&
+    String(e.id) === $("sel-emp").value);
+}
+
+function renderPickers(){
+  const roles = Object.keys(DATA.roles);
+  options($("sel-role"), roles.map(r => [r, DATA.roles[r].label]));
+  $("sel-role").style.display = roles.length > 1 ? "" : "none";
+  options($("sel-company"), Object.entries(DATA.companies).map(([c, co]) => [c, co.label]));
+  renderEmpPicker();
+}
+
+function renderEmpPicker(){
+  const role = $("sel-role").value, company = $("sel-company").value;
+  const emps = DATA.employees.filter(e => e.role === role && e.company === company)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  options($("sel-emp"), emps.map(e => [e.id, e.name]));
+}
+
+function render(){
+  const e = currentEmp();
+  if (!e){ $("sheet-wrap").style.display = "none"; return; }
+  $("sheet-wrap").style.display = "";
+  const role = DATA.roles[e.role];
+  const wk = DATA.periods.week[e.company];
+  document.querySelector(".sheet").style.setProperty("--co", e.color);
+
+  $("m-co").textContent = e.companyLabel + " · Redwood InterMountain";
+  $("m-meta").innerHTML =
+    `Pay week: <b>${wk.label}</b><br>` +
+    `Month to date: <b>${DATA.periods.mtd}</b> · Year to date: <b>${DATA.periods.ytd}</b><br>` +
+    `Printed: <b>${new Date().toLocaleDateString(undefined, {month:"short", day:"numeric", year:"numeric"})}</b>`;
+  $("m-name").textContent = e.name;
+  $("m-role").textContent = role.label + " · " + e.companyLabel + (e.team ? " · " + e.team : "");
+  $("m-ranks").innerHTML = ["week", "mtd", "ytd"].map(v => {
+    const r = e.ranks[v];
+    const lbl = {week: "Pay week", mtd: "MTD", ytd: "YTD"}[v];
+    return `<span class="rank-chip">${lbl} <b>#${r[0]} of ${r[1]}</b></span>`;
+  }).join("");
+
+  $("kpi-body").innerHTML = role.metrics.map(m => {
+    const f = fmt[m.fmt] || fmt.int;
+    const vals = ["week", "mtd", "ytd"].map(v => {
+      const val = e.kpis[v][m.key];
+      return `<td>${val == null ? "—" : f(val)}</td>`;
+    }).join("");
+    const goal = goalFor(e.role, m.key);
+    const goalTxt = goal ? f(goal.value) + (goal.type === "annual" ? "/yr" : "") : "—";
+    return `<tr><td>${m.label}</td>${vals}<td class="goal">${goalTxt}</td>` +
+           `<td class="st">${statusChip(goal, e.kpis.ytd[m.key])}</td></tr>`;
+  }).join("");
+
+  renderPay(e);
+  $("m-conf").textContent = PAY ? "Confidential — contains compensation information" : "Internal document";
+  $("m-gen").textContent = `Hyperion · data as of ${DATA.updated} · source: ServiceTitan`;
+}
+
+function renderPay(e){
+  const sec = $("pay-section"), body = $("pay-body");
+  if (!DATA.pay){
+    sec.classList.add("locked");
+    body.innerHTML = `<div class="pay-locked">${DATA.payNote || "Pay is not published on this board."}</div>`;
+    return;
+  }
+  if (!PAY){
+    sec.classList.add("locked");
+    body.innerHTML =
+      `<div class="pay-locked"><span>Pay pacing is locked.</span>` +
+      `<input type="password" id="pay-pass" placeholder="Manager passphrase" autocomplete="off">` +
+      `<button type="button" id="pay-unlock">Unlock</button><span class="err" id="pay-err"></span></div>`;
+    $("pay-unlock").onclick = unlockPay;
+    $("pay-pass").addEventListener("keydown", ev => { if (ev.key === "Enter") unlockPay(); });
+    return;
+  }
+  sec.classList.remove("locked");
+  const p = PAY.employees[String(e.id)];
+  if (!p){ body.innerHTML = `<div class="pay-locked">No pay data for this employee.</div>`; return; }
+  const target = +(((PAY.targets || {})[e.company] || {})[String(e.id)] || 0);
+  const proj = DATA.yearElapsed > 0 ? p.ytd.gross / DATA.yearElapsed : 0;
+  const fillPct = target ? Math.min(100, p.ytd.gross / target * 100) : DATA.yearElapsed * 100;
+  const status = !target ? "" :
+    proj / target >= 1.02 ? chip("ahead", "Ahead") :
+    proj / target >= 0.97 ? chip("onpace", "On pace") :
+    proj / target >= 0.85 ? chip("watch", "Watch") : chip("behind", "Behind");
+  const types = Object.entries(p.ytd.byType || {}).sort((a, b) => b[1] - a[1])
+    .map(([t, v]) => `${t.replace(/([a-z])([A-Z])/g, "$1 $2")} ${money2(v)}`).join(" · ");
+
+  body.innerHTML =
+    `<div class="pay-grid">` +
+      `<div class="pay-tile"><div class="l">Gross — Pay Week</div><div class="v">${money2(p.week.gross)}</div></div>` +
+      `<div class="pay-tile"><div class="l">Gross — MTD</div><div class="v">${money2(p.mtd.gross)}</div></div>` +
+      `<div class="pay-tile"><div class="l">Gross — YTD</div><div class="v">${money2(p.ytd.gross)}</div></div>` +
+      `<div class="pay-tile hero"><div class="l">Pacing Toward</div><div class="v">${fmt.money(proj)}</div>` +
+        `<div class="s">${target ? status : "no annual target set"}</div></div>` +
+    `</div>` +
+    `<div class="pace"><div class="track">` +
+      `<div class="fill" style="width:${fillPct.toFixed(1)}%"></div>` +
+      `<div class="tick" style="left:${(DATA.yearElapsed * 100).toFixed(1)}%"></div>` +
+      `<div class="tick-label" style="left:${(DATA.yearElapsed * 100).toFixed(1)}%">Year is ${(DATA.yearElapsed * 100).toFixed(1)}% elapsed</div>` +
+    `</div><div class="legend">` +
+      `<span><b>${money2(p.ytd.gross)}</b> earned YTD</span>` +
+      `<span>${target ? `Annual target <b>${fmt.money(target)}</b> · projected <b>${fmt.money(proj)}</b>`
+                      : `Projected year-end <b>${fmt.money(proj)}</b>`}</span>` +
+    `</div></div>` +
+    `<p class="pay-note">Gross = every ServiceTitan payroll item (performance pay, wages, spiffs, overtime). ` +
+    `YTD hours: ${p.ytd.regHours.toLocaleString()} regular · ${p.ytd.otHours.toLocaleString()} overtime. ` +
+    `Projection = YTD gross ÷ portion of year elapsed.${types ? " Breakdown: " + types + "." : ""}</p>`;
+}
+
+async function unlockPay(){
+  const pass = $("pay-pass").value;
+  const err = $("pay-err");
+  if (!pass) return;
+  err.textContent = "";
+  try {
+    const blob = DATA.pay;
+    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    const keyMat = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass),
+      "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey(
+      {name: "PBKDF2", salt: b64(blob.salt), iterations: blob.iter, hash: "SHA-256"},
+      keyMat, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
+    const pt = await crypto.subtle.decrypt(
+      {name: "AES-GCM", iv: b64(blob.nonce), additionalData: new TextEncoder().encode(blob.aad)},
+      key, b64(blob.ct));
+    PAY = JSON.parse(new TextDecoder().decode(pt));
+    render();
+  } catch (e) {
+    err.textContent = "Wrong passphrase.";
+  }
+}
+
+async function init(){
+  try {
+    const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
+    DATA = await r.json();
+  } catch (e) {
+    $("loading").textContent = "Could not load data.json — run build/scorecard_refresh.py first.";
+    return;
+  }
+  $("loading").style.display = "none";
+  renderPickers();
+  const note = [];
+  if (!DATA.complete) note.push("history backfill still in progress — YTD may be partial");
+  if (!DATA.pay && DATA.payNote) note.push(DATA.payNote);
+  $("status-line").textContent = note.join(" · ");
+  $("sel-role").onchange = () => { renderEmpPicker(); render(); };
+  $("sel-company").onchange = () => { renderEmpPicker(); render(); };
+  $("sel-emp").onchange = render;
+  render();
+}
+init();
+</script>
+</body>
+</html>

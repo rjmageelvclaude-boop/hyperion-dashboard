@@ -1,0 +1,17 @@
+{
+  "_readme": [
+    "KPI goal table for the Scorecard - the committed fallback.",
+    "Once build/scorecard-goals.gs is deployed to the shared Apps Script",
+    "store, managers edit goals there and those values override this file.",
+    "Keys match the metric keys in scorecard_live.ROLES[role]['metrics'].",
+    "A metric with no entry here simply shows no goal on the scorecard.",
+    "Goal semantics: rates/averages are thresholds the period value is held",
+    "against; counts and dollars are ANNUAL goals paced by elapsed year."
+  ],
+  "kpi": {
+    "tech": {
+      "avgTicket": {"type": "threshold", "value": 1200},
+      "convRate": {"type": "threshold", "value": 55}
+    }
+  }
+}

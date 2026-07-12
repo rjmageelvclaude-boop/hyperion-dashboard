@@ -120,6 +120,11 @@ def month_window_utc(tz, year, month):
     nxt = dt.date(year + (month == 12), month % 12 + 1, 1)
     return _iso_z(_local_ts_utc(tz, first)), _iso_z(_local_ts_utc(tz, nxt))
 
+def window_utc(tz, day_from, day_to):
+    """UTC [start, end) covering tenant-local days day_from..day_to inclusive."""
+    return (_iso_z(_local_ts_utc(tz, day_from)),
+            _iso_z(_local_ts_utc(tz, day_to + dt.timedelta(days=1))))
+
 def _parse_day(ts):
     """Date part of an API timestamp ('2026-07-01T...Z') - no tz shift."""
     return ts[:10] if ts else None
@@ -203,17 +208,25 @@ def _new_counters():
 
 def compute_month(company, year, month, roster=None, thresholds=None):
     """Raw per-tech counters for one company and one calendar month."""
+    first = dt.date(year, month, 1)
+    last = dt.date(year + (month == 12), month % 12 + 1, 1) - dt.timedelta(days=1)
+    return compute_window(company, first, last, roster=roster, thresholds=thresholds)
+
+def compute_window(company, day_from, day_to, roster=None, thresholds=None):
+    """Raw per-tech counters for one company over tenant-local days
+    day_from..day_to inclusive (the scorecard uses payroll-period windows;
+    the leaderboard's months are just full-month windows)."""
     co = COMPANIES[company]
     tenant, tz = co["tenant"], co["tz"]
     roster = roster if roster is not None else team_technicians(company)
     thresholds = thresholds if thresholds is not None else sold_thresholds(tenant)
-    start, end = month_window_utc(tz, year, month)
-    buf_splits = _iso_z(_local_ts_utc(tz, dt.date(year, month, 1))
+    start, end = window_utc(tz, day_from, day_to)
+    buf_splits = _iso_z(_local_ts_utc(tz, day_from)
                         - dt.timedelta(days=SPLITS_BUFFER_DAYS))
-    buf_est = _iso_z(_local_ts_utc(tz, dt.date(year, month, 1))
+    buf_est = _iso_z(_local_ts_utc(tz, day_from)
                      - dt.timedelta(days=ESTIMATE_BUFFER_DAYS))
 
-    # -- completed jobs in the month
+    # -- completed jobs in the window
     jobs = fetch_all(tenant, "/jpm/v2/tenant/{tenant}/jobs",
                      {"completedOnOrAfter": start, "completedBefore": end,
                       "jobStatus": "Completed"}, page_size=500, max_pages=200)

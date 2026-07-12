@@ -35,6 +35,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install --quiet cryptography   # scorecard pay encryption
+
       - name: Restore cached board histories
         uses: actions/cache/restore@v4
         with:
@@ -49,6 +52,7 @@ jobs:
             site/install-board/data.json
             site/silo-board/data.json
             site/goat-board/data.json
+            site/scorecard/data.json
           key: reports-${{ github.run_id }}
           restore-keys: reports-
 
@@ -73,6 +77,11 @@ jobs:
           INSTALL_BOARD_BUDGET: "120"
           SILO_BOARD_BUDGET: "120"
           GOAT_BOARD_BUDGET: "90"
+          SCORECARD_BUDGET: "120"
+          # Pay privacy: pay ships only as an AES-256-GCM blob under this
+          # passphrase; unset -> the scorecard publishes without pay.
+          SCORECARD_KEY: ${{ secrets.SCORECARD_KEY }}
+          SCORECARD_STORE_PIN: ${{ secrets.SCORECARD_STORE_PIN }}
         run: |
           mkdir -p secrets logs
           printf '%s' "$ST_SECRETS_JSON" > secrets/servicetitan.json
@@ -86,8 +95,12 @@ jobs:
           done
           wait
 
-          # GOAT board reads the other boards' data.json - always last
-          python build/goat_board_refresh.py || echo "GOAT board refresh failed - deploying cached data.json"
+          # GOAT board and Scorecard read the other boards' data.json - always last
+          python build/goat_board_refresh.py > logs/goat_board.log 2>&1 \
+            || echo "GOAT board refresh failed - deploying cached data.json" >> logs/goat_board.log &
+          python build/scorecard_refresh.py > logs/scorecard.log 2>&1 \
+            || echo "scorecard refresh failed - deploying cached data.json" >> logs/scorecard.log &
+          wait
 
           for f in logs/*.log; do echo "::group::$f"; cat "$f"; echo "::endgroup::"; done
           rm -rf secrets logs
@@ -107,6 +120,7 @@ jobs:
             site/install-board/data.json
             site/silo-board/data.json
             site/goat-board/data.json
+            site/scorecard/data.json
           key: reports-${{ github.run_id }}
 
       - name: Upload site
