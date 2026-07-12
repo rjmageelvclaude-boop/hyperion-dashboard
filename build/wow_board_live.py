@@ -30,18 +30,21 @@ against the deck's Week-10 numbers (2026-07-05 snapshot):
                    ROPP+Removed overlap (33 vs deck 35). Also the deck's
                    "ROPPs vs plan" numerator and the silo TGL-rate denominator
   HVAC S&M         completed HVAC-service-bucket jobs: opportunity /
-                   conversion via soldThreshold, avg ticket = job totals /
-                   opps, membership conversion on previously-non-member
-                   customers (SAM / Shield / MVP skus per company)
-  HVAC silo        TGLs = non-canceled jobs created in the week, lead-sourced
-                   to a silo-team tech, with an Estimate job type; same-day /
+                   conversion via soldThreshold; avg ticket = week's S&M
+                   SALES / opps (the deck's exact W10 quotient); membership
+                   conversion = non-member jobs with a membership sold (SAM /
+                   Shield / MVP skus) over non-member OPPORTUNITY jobs
+  HVAC silo        TGLs = estimate-TGL-typed jobs created in the week, any
+                   generating tech, later-canceled included; same-day /
                    next-day = first-appointment start vs creation day
-  HVAC sales (CA)  completed HVAC-Sales-bucket jobs split TGL / Costco /
-                   Marketed by job-type name + Costco BU; closed = a sold
-                   (non-dismissed) estimate on the job in the week
-  plumbing         completed plumbing-bucket jobs (conv 34.5% / ticket vs
-                   deck 35% / $1,005); units = tankless / tanked / filtration
-                   pricebook SKUs on sold estimates tied to plumbing jobs
+  HVAC sales (CA)  completed HVAC-Sales-bucket jobs: Costco = the Costco BU
+                   (regardless of job type), TGL = TGL-typed remainder,
+                   Marketed = the rest; closed = a sold (non-dismissed)
+                   estimate on the job in the week
+  plumbing         completed Drains/Service/Maintenance-bucket jobs (install
+                   BU excluded per RJ's report filter); units = tankless /
+                   tanked / filtration pricebook SKUs on sold estimates tied
+                   to any plumbing-bucket job incl. install
 
 Counts drift after a week closes (jobs get canceled/reactivated, estimates
 adjusted), which is why a live recompute of an old week lands within a few
@@ -74,12 +77,15 @@ from tech_board_live import (DEFAULT_SOLD_THRESHOLD, _local_completed_day,
                              sold_thresholds, window_utc)
 from tech_board_live import _is_memb_sku as hvac_memb_sku
 from silo_board_live import _local_day, estimate_job_type_ids
-from silo_board_live import team_technicians as silo_roster
 from plumb_board_live import _is_memb_sku as plumb_memb_sku
 from csr_board_live import LEAD_TYPES
 from call_board_live import is_opportunity
 
 HISTORY_FILE = os.path.join(ROOT, "data", "wow-board-history.json")
+# Bump when metric definitions change: cached weeks computed under an older
+# version are recomputed instead of served (the Actions cache would otherwise
+# keep serving frozen weeks built with the old definitions forever).
+DEFS_VER = 2
 WEEK1_FROM = dt.date(2026, 5, 1)     # the deck's Week 1: Fri 5/1 - Sun 5/3
 WEEK1_TO = dt.date(2026, 5, 3)
 FREEZE_DAYS = 10                     # closed week is final this long after its Sunday
@@ -140,13 +146,12 @@ def build_ctx(company):
                           {"active": "Any"}, page_size=200)
                 if "avoca" in (e.get("name") or "").lower()}
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         f_av = pool.submit(avoca_ids)
-        f_silo = pool.submit(silo_roster, company)
         f_thr = pool.submit(sold_thresholds, tenant)
         f_est = pool.submit(estimate_job_type_ids, tenant)
         f_jt = pool.submit(job_type_names, tenant)
-        return {"avoca": f_av.result(), "silo": f_silo.result(),
+        return {"avoca": f_av.result(),
                 "thresholds": f_thr.result(), "estTypes": f_est.result(),
                 "jtNames": f_jt.result()}
 
@@ -279,13 +284,18 @@ def compute_week(company, day_from, day_to, ctx):
     removed_tags = REMOVED_ROPP_TAGS.get(company, set())
     ropp_tags = set(cc["ropp_tags"])
     ropps_ran = ropps_removed = 0
-    fam = {"sm": {"jobs": 0, "opps": 0, "conv": 0, "rev": 0.0, "cust": set()},
-           "pl": {"jobs": 0, "opps": 0, "conv": 0, "rev": 0.0, "cust": set()}}
+    # sm = HVAC service+maint; pl = plumbing Drains/Service/Maintenance
+    # (RJ's report filter - sales and membership live here); plAll adds the
+    # install BU, whose big-ticket completions drive opportunity conversion
+    # and the capacity denominator (the deck's plumbing numbers need it).
+    fam = {k: {"jobs": 0, "opps": 0, "conv": 0, "rev": 0.0, "cust": set()}
+           for k in ("sm", "pl", "plAll")}
     ca_ran = {"tgl": 0, "costco": 0, "mkt": 0}
     ca_closed = {"tgl": 0, "costco": 0, "mkt": 0}
-    fam_jobs = {"sm": [], "pl": []}
+    fam_jobs = {"sm": [], "pl": [], "plAll": []}
     for j in jobs_done:
         b = bucket(j)
+        keys = []
         if b in HVAC_SERVICE:
             tags = set(j.get("tagTypeIds") or [])
             if ropp_tags & tags:
@@ -293,59 +303,65 @@ def compute_week(company, day_from, day_to, ctx):
                     ropps_removed += 1
                 else:
                     ropps_ran += 1
-            key = "sm"
+            keys = ["sm"]
         elif b in PLUMB_ALL:
-            key = "pl"
+            keys = ["plAll"] + (["pl"] if b in PLUMB_SERVICE else [])
         elif b == "hvac_sales":
+            # Costco is BU-scoped (a TGL-typed job in the Costco BU is Costco);
+            # TGL is the TGL-typed remainder of HVAC - Sales
             name = (jt_names.get(j.get("jobTypeId")) or "").lower()
-            cat = ("tgl" if "tgl" in name
-                   else "costco" if j.get("businessUnitId") in cc["costco_bu"]
-                   or "costco" in name else "mkt")
+            cat = ("costco" if j.get("businessUnitId") in cc["costco_bu"]
+                   else "tgl" if "tgl" in name else "mkt")
             ca_ran[cat] += 1
             ca_closed[cat] += bool(sold_on_job.get(j["id"]))
             continue
         else:
             continue
-        f = fam[key]
         total = float(j.get("total") or 0)
         thr = thresholds.get(j.get("jobTypeId"), DEFAULT_SOLD_THRESHOLD)
         opp = (not j.get("noCharge")) or total >= thr
-        f["jobs"] += 1
-        f["opps"] += opp
-        f["conv"] += opp and total >= thr
-        f["rev"] += total
-        if j.get("customerId"):
-            f["cust"].add(j["customerId"])
-        fam_jobs[key].append(j)
-    m.update(hvacOppsRan=fam["sm"]["opps"], plumbOppsRan=fam["pl"]["opps"],
+        for key in keys:
+            f = fam[key]
+            f["jobs"] += 1
+            f["opps"] += opp
+            f["conv"] += opp and total >= thr
+            f["rev"] += total
+            if j.get("customerId"):
+                f["cust"].add(j["customerId"])
+            fam_jobs[key].append((j, opp))
+    m.update(hvacOppsRan=fam["sm"]["opps"], plumbOppsRan=fam["plAll"]["opps"],
              roppsRan=ropps_ran, roppsRemoved=ropps_removed,
              tglRan=ca_ran["tgl"], tglClosed=ca_closed["tgl"],
              costcoRan=ca_ran["costco"], costcoClosed=ca_closed["costco"],
              mktRan=ca_ran["mkt"], mktClosed=ca_closed["mkt"])
 
-    # membership conversion on previously-non-member customers (job-level)
+    # Membership conversion, validated against RJ's report (Sierra W10:
+    # S&M 44/217 = 20%, plumbing 7/45 = 15%): memberships sold on ANY
+    # previously-non-member job in the family (maintenance visits usually
+    # price below the sold threshold, so the sales mostly happen on non-opp
+    # jobs) over previously-non-member OPPORTUNITY jobs.
     customers = fam["sm"]["cust"] | fam["pl"]["cust"]
     memberships = _memberships_for_customers(tenant, customers) if customers else {}
 
     def memb_metrics(key, sku_match):
-        nm_jobs = nm_sold = 0
-        for j in fam_jobs[key]:
+        nm_opps = nm_sold = 0
+        for j, opp in fam_jobs[key]:
             if not j.get("customerId"):
                 continue
             day = _local_completed_day(tz, j["completedOn"]).isoformat()
             if _member_before(memberships, j["customerId"], day):
                 continue
-            nm_jobs += 1
+            nm_opps += opp
             nm_sold += any(
                 sku_match((it.get("sku") or {}).get("name"))
                 for e in sold_on_job.get(j["id"], ())
                 for it in (e.get("items") or []))
-        return nm_jobs, nm_sold
+        return nm_opps, nm_sold
 
     m["smNmJobs"], m["smNmSold"] = memb_metrics("sm", lambda n: hvac_memb_sku(company, n))
     m["plNmJobs"], m["plNmSold"] = memb_metrics("pl", lambda n: plumb_memb_sku(company, n))
 
-    for prefix, key in (("sm", "sm"), ("pl", "pl")):
+    for prefix, key in (("sm", "sm"), ("pl", "plAll")):
         f = fam[key]
         m[prefix + "Jobs"] = f["jobs"]
         m[prefix + "Opps"] = f["opps"]
@@ -358,7 +374,7 @@ def compute_week(company, day_from, day_to, ctx):
     if skus:
         for e in est_sold:
             if bucket(jobs_by_id.get(e.get("jobId")) or {}) not in PLUMB_ALL:
-                continue
+                continue  # units keep the install BU - equipment often lands there
             for it in (e.get("items") or []):
                 name = " ".join(((it.get("sku") or {}).get("name") or "").split()).lower()
                 for cat, names in skus.items():
@@ -368,16 +384,14 @@ def compute_week(company, day_from, day_to, ctx):
              plFiltration=units["filtration"])
 
     # ---------------------------------------------------------- HVAC silo
-    silo_keys = {}
-    for t in ctx["silo"].values():
-        silo_keys[t["id"]] = t["id"]
-        if t.get("userId"):
-            silo_keys[t["userId"]] = t["id"]
+    # TGL = every estimate-TGL-typed job created in the week, any generating
+    # tech, INCLUDING later-canceled (a created lead is a created lead, and
+    # the count then never drifts after the week closes). Sierra W10: 84 vs
+    # RJ's 81 - his snapshot predates a few cancel-status flips.
     tgl_jobs = []
     for j in jobs_created:
-        src = j.get("jobGeneratedLeadSource") or {}
-        if (silo_keys.get(src.get("employeeId")) and j.get("jobStatus") != "Canceled"
-                and j.get("jobTypeId") in ctx["estTypes"]):
+        name = (jt_names.get(j.get("jobTypeId")) or "").lower()
+        if j.get("jobTypeId") in ctx["estTypes"] and "tgl" in name:
             tgl_jobs.append(j)
     appt_start = {}
     appt_ids = sorted({j.get("firstAppointmentId") for j in tgl_jobs
@@ -416,6 +430,8 @@ def compute_company(company, deadline=None, progress=None):
         key = day_from.isoformat()
         ended = day_to < today
         entry = hist.get(key)
+        if entry and entry.get("defs") != DEFS_VER:
+            entry = None                     # stale definitions - recompute
         frozen = bool(entry and entry.get("final"))
         fresh = bool(entry and time.time() - entry.get("at", 0) < RECHECK_HOURS * 3600)
         if ended and entry and (frozen or fresh):
@@ -437,6 +453,7 @@ def compute_company(company, deadline=None, progress=None):
         if ended:
             update_history(HISTORY_FILE, company, key, {
                 "at": time.time(),
+                "defs": DEFS_VER,
                 "final": (today - day_to).days >= FREEZE_DAYS,
                 "m": metrics,
             })

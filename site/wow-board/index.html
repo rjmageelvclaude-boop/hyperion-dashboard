@@ -54,7 +54,8 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#f2f3f5
 .mbox .c{font-size:10.5px;font-weight:700;color:#8a919c;margin-top:3px}
 .mbox.main{background:var(--co,#1663c7);color:#fff}
 .mbox.main .k,.mbox.main .c{color:rgba(255,255,255,.8)}
-.mbox .edit{font-size:10px;font-weight:800;color:#2a78d6;cursor:pointer;margin-top:4px;display:inline-block}
+.edit{font-size:10px;font-weight:800;color:#2a78d6;cursor:pointer;display:inline-block}
+.mbox .edit{margin-top:4px}
 .mbox.main .edit{color:rgba(255,255,255,.9);text-decoration:underline}
 /* scoreboard */
 table.sb{width:100%;border-collapse:collapse;font-size:12.5px}
@@ -89,7 +90,7 @@ table.sb{width:100%;border-collapse:collapse;font-size:12.5px}
 }
 @media print{
   body{background:#fff}
-  .nav,.tabs,.mbox .edit{display:none}
+  .nav,.tabs,.edit{display:none}
   .sec{box-shadow:none;border:1px solid #ddd;break-inside:avoid;page-break-inside:avoid}
   .wrap{max-width:none;padding:0}
   .grid{gap:10px}
@@ -143,28 +144,50 @@ const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th","st","nd","r
 const pp = (a, b) => { const d = a - b; return Math.abs(d) < .05 ? "flat" : (d > 0 ? "+" : "−") + Math.abs(d).toFixed(Math.abs(d) < 3 ? 1 : 0) + " pt"; };
 const dpct = (a, b) => { if (!b) return "—"; const d = (a - b) / b * 100; return Math.abs(d) < .5 ? "flat" : (d > 0 ? "+" : "−") + Math.abs(d).toFixed(0) + "%"; };
 const dnum = (a, b) => { const d = a - b; return d === 0 ? "flat" : (d > 0 ? "+" : "−") + Math.abs(Math.round(d)); };
-function plans(co) {
-  const p = {...DEFAULT_PLANS[co]};
+// Weekly manual inputs (wow store): `${co}|${weekKey}|${field}` - avoca,
+// hvacPlan, plumbPlan, roppPlan. Plans carry forward (latest set week wins;
+// weeks before the first set value inherit it), then the call-board store's
+// defaults, then DEFAULT_PLANS.
+const wowVal = (co, wk, f) => {
+  const v = parseFloat((BUDGETS.wow || {})[`${co}|${wk}|${f}`]);
+  return isNaN(v) ? null : v;
+};
+function planLookup(co, weeks) {
   const cb = BUDGETS.callboard || {};
-  const get = k => { const v = parseFloat(cb[k]); return isNaN(v) ? null : v; };
-  p.hvac = get(co + "-hvac|default|calls") ?? p.hvac;
-  p.plumb = get(co + "-plumbing|default|calls") ?? p.plumb;
-  p.ropps = get(co + "-hvac|default|ropps") ?? p.ropps;
-  return p;
+  const cbKey = {hvac: co + "-hvac|default|calls", plumb: co + "-plumbing|default|calls", ropps: co + "-hvac|default|ropps"};
+  const idxOf = Object.fromEntries(weeks.map((w, i) => [w.key, i]));
+  const sets = {};
+  for (const f of ["hvac", "plumb", "ropps"])
+    sets[f] = weeks.map(w => wowVal(co, w.key, f + "Plan"));
+  return (wk, f) => {
+    const i = idxOf[wk] ?? weeks.length - 1;
+    for (let k = i; k >= 0; k--) if (sets[f][k] != null) return sets[f][k];
+    for (let k = i + 1; k < weeks.length; k++) if (sets[f][k] != null) return sets[f][k];
+    const v = parseFloat(cb[cbKey[f]]);
+    return isNaN(v) ? DEFAULT_PLANS[co][f] : v;
+  };
 }
-function metricList(co) {
-  const P = plans(co.key);
+function metricList(co, weeks) {
+  const PF = planLookup(co.key, weeks);
+  const has = f => PF(weeks[weeks.length - 1].key, f) != null;
+  const cap = (f, ran) => ({
+    val: w => { const p = PF(w.key, f); return p ? ran(w) / (p * w.weekdays) * 100 : ran(w); },
+    fmt: has(f) ? (v => v.toFixed(0) + "%") : (v => v.toFixed(0)),
+    d: has(f) ? pp : dnum,
+  });
   const M = [
     {id:"stRate", lbl:"ST Booking Rate", sec:"CALL CENTER", up:1, val:w => w.m.stLeads ? w.m.stBooked / w.m.stLeads * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
-    {id:"avRate", lbl:"Avoca Booking Rate", sec:"CALL CENTER", up:1, hide:w => !w.m.avLeads, val:w => w.m.avLeads ? w.m.avBooked / w.m.avLeads * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
+    {id:"avRate", lbl:"Avoca Booking Rate", sec:"CALL CENTER", up:1, manual:1,
+     edit:w => [`${co.key}|${w.key}|avoca`, "Avoca booking rate (%) - from the Avoca platform"],
+     val:w => wowVal(co.key, w.key, "avoca"), fmt:v => (v % 1 ? v.toFixed(1) : v.toFixed(0)) + "%", d:pp},
     {id:"cancJobs", lbl:"Canceled Jobs", sec:"CALL CENTER", up:0, val:w => w.m.cancJobs, fmt:v => v.toFixed(0), d:dnum},
-    {id:"hvacCap", lbl:"HVAC Board Capacity", sec:"CAPACITY", up:1, plan:P.hvac, val:w => P.hvac ? w.m.hvacOppsRan / (P.hvac * w.weekdays) * 100 : w.m.hvacOppsRan, fmt:v => P.hvac ? v.toFixed(0) + "%" : v.toFixed(0), d:P.hvac ? pp : dnum},
-    {id:"plumbCap", lbl:"Plumbing Board Capacity", sec:"CAPACITY", up:1, plumb:1, plan:P.plumb, val:w => P.plumb ? w.m.plumbOppsRan / (P.plumb * w.weekdays) * 100 : w.m.plumbOppsRan, fmt:v => P.plumb ? v.toFixed(0) + "%" : v.toFixed(0), d:P.plumb ? pp : dnum},
-    {id:"roppPlan", lbl:"Ropps vs Plan", sec:"CAPACITY", up:1, plan:P.ropps, val:w => P.ropps ? w.m.roppsRan / (P.ropps * w.weekdays) * 100 : w.m.roppsRan, fmt:v => P.ropps ? v.toFixed(0) + "%" : v.toFixed(0), d:P.ropps ? pp : dnum},
+    {id:"hvacCap", lbl:"HVAC Board Capacity", sec:"CAPACITY", up:1, ...cap("hvac", w => w.m.hvacOppsRan)},
+    {id:"plumbCap", lbl:"Plumbing Board Capacity", sec:"CAPACITY", up:1, plumb:1, ...cap("plumb", w => w.m.plumbOppsRan)},
+    {id:"roppPlan", lbl:"Ropps vs Plan", sec:"CAPACITY", up:1, ...cap("ropps", w => w.m.roppsRan)},
     {id:"roppsRemoved", lbl:"Removed Ropps", sec:"CAPACITY", up:0, hide:w => w.m.roppsRemoved === 0 && co.key !== "sierra", val:w => w.m.roppsRemoved, fmt:v => v.toFixed(0), d:dnum},
     {id:"smSales", lbl:"S&M Sales", sec:"HVAC S&M", up:1, val:w => w.m.smSales, fmt:fmtM, d:dpct},
     {id:"smConv", lbl:"S&M Conversion", sec:"HVAC S&M", up:1, val:w => w.m.smOpps ? w.m.smConv / w.m.smOpps * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
-    {id:"smTicket", lbl:"S&M Avg Ticket", sec:"HVAC S&M", up:1, val:w => w.m.smOpps ? w.m.smRevenue / w.m.smOpps : 0, fmt:fmt$, d:(a,b) => dnum(a,b).replace(/^([+−])/, "$1$")},
+    {id:"smTicket", lbl:"S&M Avg Ticket", sec:"HVAC S&M", up:1, val:w => w.m.smOpps ? w.m.smSales / w.m.smOpps : 0, fmt:fmt$, d:(a,b) => dnum(a,b).replace(/^([+−])/, "$1$")},
     {id:"smMemb", lbl:"Membership Conv. (S&M)", sec:"HVAC S&M", up:1, val:w => w.m.smNmJobs ? w.m.smNmSold / w.m.smNmJobs * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
     {id:"tglRate", lbl:"TGL Rate", sec:"HVAC SILO", up:1, val:w => w.m.roppsRan ? w.m.siloTgls / w.m.roppsRan * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
     {id:"tgls", lbl:"TGLs Generated", sec:"HVAC SILO", up:1, val:w => w.m.siloTgls, fmt:v => v.toFixed(0), d:dnum},
@@ -177,31 +200,34 @@ function metricList(co) {
     {id:"cancEst", lbl:"Canceled Estimates", sec:"HVAC SALES", up:0, val:w => w.m.cancSales, fmt:v => v.toFixed(0), d:dnum},
     {id:"plSales", lbl:"Plumbing Sales", sec:"PLUMBING", up:1, plumb:1, val:w => w.m.plSales, fmt:fmtM, d:dpct},
     {id:"plConv", lbl:"Plumbing Conversion", sec:"PLUMBING", up:1, plumb:1, val:w => w.m.plOpps ? w.m.plConv / w.m.plOpps * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
-    {id:"plTicket", lbl:"Plumbing Avg Ticket", sec:"PLUMBING", up:1, plumb:1, val:w => w.m.plOpps ? w.m.plRevenue / w.m.plOpps : 0, fmt:fmt$, d:dpct},
+    {id:"plTicket", lbl:"Plumbing Avg Ticket", sec:"PLUMBING", up:1, plumb:1, val:w => w.m.plOpps ? w.m.plSales / w.m.plOpps : 0, fmt:fmt$, d:dpct},
     {id:"plMemb", lbl:"Membership Conv. (Plumb)", sec:"PLUMBING", up:1, plumb:1, val:w => w.m.plNmJobs ? w.m.plNmSold / w.m.plNmJobs * 100 : 0, fmt:v => v.toFixed(0) + "%", d:pp},
   ];
   return M.filter(x => (!x.plumb || co.plumb) && (!x.costco || co.costco));
 }
 
-// rank of week idx among ended weeks 0..idx (1 = best)
+// rank of week idx among ended weeks 0..idx (1 = best); manual metrics
+// rank only among weeks that have a value (val() == null means "not keyed")
 function rankOf(metric, weeks, idx) {
   const v = metric.val(weeks[idx]);
   let better = 0, n = 0;
   for (let i = 0; i <= idx; i++) {
     if (!weeks[i].ended && i !== idx) continue;
-    n++;
     const u = metric.val(weeks[i]);
-    if (i !== idx && (metric.up ? u > v : u < v)) better++;
+    if (u == null) continue;
+    n++;
+    if (i !== idx && v != null && (metric.up ? u > v : u < v)) better++;
   }
-  return {rank: better + 1, n};
+  return {rank: v == null ? null : better + 1, n};
 }
 function bestOf(metric, weeks, idx) {
-  let bi = 0, bv = null;
+  let bi = -1, bv = null;
   for (let i = 0; i <= idx; i++) {
     const u = metric.val(weeks[i]);
+    if (u == null) continue;
     if (bv === null || (metric.up ? u > bv : u < bv)) { bv = u; bi = i; }
   }
-  return {v: bv, wk: weeks[bi].label};
+  return {v: bv, wk: bi >= 0 ? weeks[bi].label : "—"};
 }
 
 // ---------------------------------------------------------------- charts
@@ -226,7 +252,7 @@ function barChart(weeks, idx, val, fmt, color) {
 function lineChart(weeks, idx, series, fmt, opts = {}) {
   const W = opts.W || 560, H = 150, padL = 6, padR = 40, padB = 16, padT = 12;
   const n = idx + 1;
-  const all = series.flatMap(s => weeks.slice(0, n).map(s.val));
+  const all = series.flatMap(s => weeks.slice(0, n).map(s.val)).filter(v => v != null);
   const max = Math.max(...all, opts.ref || 0, 1e-9), min = 0;
   const x = i => padL + (W - padL - padR) * (n === 1 ? .5 : i / (n - 1));
   const y = v => padT + (H - padT - padB) * (1 - (v - min) / (max - min));
@@ -235,17 +261,22 @@ function lineChart(weeks, idx, series, fmt, opts = {}) {
   for (const g of [.5, 1]) s += `<line x1="${padL}" x2="${W - padR}" y1="${y(max * g)}" y2="${y(max * g)}" stroke="#e1e0d9" stroke-width="1"/>`;
   if (opts.ref) s += `<line x1="${padL}" x2="${W - padR}" y1="${y(opts.ref)}" y2="${y(opts.ref)}" stroke="#898781" stroke-width="1" stroke-dasharray="4 3"/><text x="${W - padR + 4}" y="${y(opts.ref) + 3}" font-size="8.5" font-weight="700" fill="#898781">${esc(opts.refLbl || opts.ref)}</text>`;
   series.forEach((sr, si) => {
-    const pts = weeks.slice(0, n).map((w, i) => [x(i), y(sr.val(w))]);
-    s += `<polyline points="${pts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${SERIES[si]}" stroke-width="2"/>`;
-    pts.forEach((p, i) => {
-      const sel = i === idx;
-      s += `<circle cx="${p[0]}" cy="${p[1]}" r="${sel ? 4.5 : 3}" fill="${SERIES[si]}" stroke="#fff" stroke-width="2" data-tip="${esc(sr.lbl + " " + weeks[i].label + ": " + fmt(sr.val(weeks[i])))}"/>`;
+    const pts = [];   // weeks without a value (hand-keyed gaps) are skipped
+    weeks.slice(0, n).forEach((w, i) => {
+      const v = sr.val(w);
+      if (v != null) pts.push([x(i), y(v), i, v]);
     });
-    const last = pts[n - 1];
+    if (!pts.length) return;
+    s += `<polyline points="${pts.map(p => p[0] + "," + p[1]).join(" ")}" fill="none" stroke="${SERIES[si]}" stroke-width="2"/>`;
+    pts.forEach(p => {
+      const sel = p[2] === idx;
+      s += `<circle cx="${p[0]}" cy="${p[1]}" r="${sel ? 4.5 : 3}" fill="${SERIES[si]}" stroke="#fff" stroke-width="2" data-tip="${esc(sr.lbl + " " + weeks[p[2]].label + ": " + fmt(p[3]))}"/>`;
+    });
+    const last = pts[pts.length - 1];
     let ly = last[1] + 3;
     while (labelYs.some(u => Math.abs(u - ly) < 11)) ly += 11;
     labelYs.push(ly);
-    s += `<text x="${last[0] + 7}" y="${ly}" font-size="9.5" font-weight="800" fill="${SERIES[si]}">${esc(fmt(sr.val(weeks[n - 1])))}</text>`;
+    s += `<text x="${last[0] + 7}" y="${ly}" font-size="9.5" font-weight="800" fill="${SERIES[si]}">${esc(fmt(last[3]))}</text>`;
   });
   weeks.slice(0, n).forEach((w, i) => {
     s += `<text x="${x(i)}" y="${H - 4}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#898781">${w.label}</text>`;
@@ -260,6 +291,14 @@ function legend(items) {
 function tile(metric, weeks, idx) {
   const w = weeks[idx];
   const v = metric.val(w);
+  const editLink = metric.edit
+    ? `<span class="edit" data-bkey="${esc(metric.edit(w)[0])}" data-blbl="${esc(metric.edit(w)[1])}">${v == null ? "enter" : "edit"}</span>`
+    : "";
+  if (v == null) {
+    return `<div class="tile"><div class="k">${esc(metric.lbl)}</div>
+      <div class="v">—</div>
+      <div class="c">Hand-keyed weekly · not entered for ${esc(w.label)} ${editLink}</div></div>`;
+  }
   const {rank, n} = rankOf(metric, weeks, idx);
   const best = bestOf(metric, weeks, idx);
   const prev = idx > 0 ? metric.val(weeks[idx - 1]) : null;
@@ -267,15 +306,16 @@ function tile(metric, weeks, idx) {
   if (rank === 1) cls = "top"; else if (rank <= 3) cls = "hi";
   else if (rank > n - 3 && n > 5) cls = rank === n ? "bot" : "lo";
   let ctx;
-  if (rank === 1 && n > 1) {
-    ctx = `New ${n}-week ${metric.up ? "high" : "low (best)"} · prior best ${metric.fmt(bestOf(metric, weeks.slice(0, idx), idx - 1).v)}`;
+  const priorBest = idx > 0 ? bestOf(metric, weeks.slice(0, idx), idx - 1) : {v: null};
+  if (rank === 1 && n > 1 && priorBest.v != null) {
+    ctx = `New ${n}-week ${metric.up ? "high" : "low (best)"} · prior best ${metric.fmt(priorBest.v)}`;
   } else {
-    ctx = `Best ${metric.fmt(best.v)} (${best.wk})` + (prev !== null ? ` · ${metric.d(v, prev)} vs ${weeks[idx - 1].label}` : "");
+    ctx = `Best ${metric.fmt(best.v)} (${best.wk})` + (prev != null ? ` · ${metric.d(v, prev)} vs ${weeks[idx - 1].label}` : "");
   }
   return `<div class="tile"><div class="k">${esc(metric.lbl)}</div>
     <div class="v">${esc(metric.fmt(v))}</div>
     <span class="badge ${cls}">${txt}</span>
-    <div class="c">${esc(ctx)}</div></div>`;
+    <div class="c">${esc(ctx)} ${editLink}</div></div>`;
 }
 
 // ---------------------------------------------------------------- sections
@@ -287,9 +327,9 @@ function render() {
   if (!curWk || !weeks.some(w => w.key === curWk && w.ended)) curWk = ended[ended.length - 1].key;
   const idx = weeks.findIndex(w => w.key === curWk);
   const w = weeks[idx];
-  const M = Object.fromEntries(metricList({key: curCo, ...co}).map(x => [x.id, x]));
   const co_ = {key: curCo, ...co};
-  const P = plans(curCo);
+  const M = Object.fromEntries(metricList(co_, weeks).map(x => [x.id, x]));
+  const PF = planLookup(curCo, weeks);
   document.documentElement.style.setProperty("--co", co.color);
   document.body.style.setProperty("--co", co.color);
   $("t-co").textContent = co.label;
@@ -341,23 +381,25 @@ function render() {
       ${lineChart(weeks, idx, sales3, fmtM, {W: innerWidth > 900 ? 1140 : 560})}${legend(sales3.map(s => s.lbl))}</div></div>
   </div>`);
 
-  const av = M.avRate && !M.avRate.hide(w);
+  const avAny = weeks.slice(0, idx + 1).some(x => M.avRate.val(x) != null);
   secs.push(`<div class="sec">
     <div class="s-head"><span class="s-kicker">Call Center</span><span class="s-title">Booking Rates and Cancellations</span></div>
-    <div class="tiles">${T("stRate")}${av ? T("avRate") : ""}${T("cancJobs")}</div>
+    <div class="tiles">${T("stRate")}${T("avRate")}${T("cancJobs")}</div>
     <div class="charts">
       <div class="chart"><h4>Booking Rates by Week</h4>
-      ${lineChart(weeks, idx, [{lbl: "ST", val: M.stRate.val}].concat(av ? [{lbl: "Avoca", val: M.avRate.val}] : []), v => v.toFixed(0) + "%")}
-      ${legend(["ST"].concat(av ? ["Avoca"] : []))}</div>
+      ${lineChart(weeks, idx, [{lbl: "ST", val: M.stRate.val}].concat(avAny ? [{lbl: "Avoca", val: M.avRate.val}] : []), v => v.toFixed(0) + "%")}
+      ${legend(["ST"].concat(avAny ? ["Avoca"] : []))}</div>
       <div class="chart"><h4>Canceled Jobs by Week</h4>${barChart(weeks, idx, M.cancJobs.val, v => v.toFixed(0), SERIES[0])}</div>
     </div>
   </div>`);
 
+  const P = {hvac: PF(w.key, "hvac"), plumb: PF(w.key, "plumb"), ropps: PF(w.key, "ropps")};
   const capTiles = [T("hvacCap")].concat(co.plumb ? [T("plumbCap")] : []).concat([T("roppPlan")]).concat(M.roppsRemoved.hide(w) ? [] : [T("roppsRemoved")]);
   const capSeries = [{lbl: "HVAC", val: M.hvacCap.val}].concat(co.plumb ? [{lbl: "Plumbing", val: M.plumbCap.val}] : []);
   secs.push(`<div class="sec">
     <div class="s-head"><span class="s-kicker">Call Center</span><span class="s-title">Board Capacity (Opportunities Ran)</span>
-      <span class="s-right">${[P.hvac && "HVAC " + P.hvac + "/day", P.plumb && co.plumb && "Plumb " + P.plumb + "/day", P.ropps && "Ropps " + P.ropps + "/day"].filter(Boolean).join(" · ")}</span></div>
+      <span class="s-right">${[P.hvac && "HVAC " + P.hvac + "/day", P.plumb && co.plumb && "Plumb " + P.plumb + "/day", P.ropps && "Ropps " + P.ropps + "/day"].filter(Boolean).join(" · ") || "no plans set"}
+      <span class="edit" data-plans="${w.key}">set plans</span></span></div>
     <div class="tiles">${capTiles.join("")}</div>
     <div class="charts">
       <div class="chart"><h4>Capacity Utilization${P.hvac ? " vs 100%" : ""}</h4>
@@ -416,12 +458,16 @@ function render() {
   }
 
   // scoreboard
-  const list = metricList(co_).filter(x => !(x.hide && x.hide(w)));
+  const list = metricList(co_, weeks).filter(x => !(x.hide && x.hide(w)));
   const half = Math.ceil(list.length / 2);
   const sbRow = x => {
     const v = x.val(w), prev = idx > 0 ? x.val(weeks[idx - 1]) : null;
+    if (v == null) {
+      return `<tr><td>${esc(x.lbl)}</td><td class="num">—</td>
+        <td class="num d-fl">—</td><td><span class="rk">—</span></td></tr>`;
+    }
     const {rank, n} = rankOf(x, weeks, idx);
-    const d = prev !== null ? x.d(v, prev) : "—";
+    const d = prev != null ? x.d(v, prev) : "—";
     const dcls = d === "flat" || d === "—" ? "d-fl" : ((d.startsWith("+") === !!x.up) ? "d-up" : "d-dn");
     const rcls = rank <= 3 ? "top" : (rank > n - 3 && n > 5 ? "bot" : "");
     return `<tr><td>${esc(x.lbl)}</td><td class="num">${esc(x.fmt(v))}</td>
@@ -437,10 +483,12 @@ function render() {
   // takeaways
   const good = [], bad = [];
   for (const x of list) {
+    const v = x.val(w);
+    if (v == null) continue;
     const {rank, n} = rankOf(x, weeks, idx);
     if (n < 4) continue;
-    const v = x.val(w), prev = idx > 0 ? x.val(weeks[idx - 1]) : null;
-    const dtxt = prev !== null ? ` (${x.d(v, prev)} vs ${weeks[idx - 1].label})` : "";
+    const prev = idx > 0 ? x.val(weeks[idx - 1]) : null;
+    const dtxt = prev != null ? ` (${x.d(v, prev)} vs ${weeks[idx - 1].label})` : "";
     if (rank === 1) good.push(`${x.lbl} ${x.fmt(v)} — best of all ${n} weeks${dtxt}`);
     else if (rank <= 3) good.push(`${x.lbl} ${x.fmt(v)} — ${ord(rank)} of ${n}${dtxt}`);
     else if (rank === n) bad.push(`${x.lbl} ${x.fmt(v)} — ${x.up ? "lowest" : "worst"} of all ${n} weeks${dtxt}`);
@@ -455,7 +503,8 @@ function render() {
   </div>`);
 
   $("board").innerHTML = secs.join("");
-  document.querySelectorAll(".edit").forEach(el => el.onclick = () => editBudget(el.dataset.bkey));
+  document.querySelectorAll(".edit").forEach(el => el.onclick = () =>
+    el.dataset.plans ? editPlans(el.dataset.plans) : editBudget(el.dataset.bkey, el.dataset.blbl));
   const url = new URL(location);
   url.searchParams.set("co", curCo); url.searchParams.set("wk", curWk);
   history.replaceState(null, "", url);
@@ -489,21 +538,42 @@ async function loadBudgets() {
     try { BUDGETS = JSON.parse(localStorage.getItem("wow-budgets")) || {}; } catch (_) { BUDGETS = {}; }
   }
 }
-async function editBudget(key) {
-  const parts = key.split("|");
-  const cur = (BUDGETS.wow || {})[key];
-  const val = prompt(`${parts[2] === "plan" ? "Plan" : "Budget"} for ${DATA.companies[parts[0]].label} ${parts[1]} ($):`, cur || "");
-  if (val === null) return;
-  let pin = localStorage.getItem(PIN_KEY) || prompt("PIN:");
-  if (!pin) return;
+async function saveWow(key, rawVal) {
+  const pin = localStorage.getItem(PIN_KEY) || prompt("PIN:");
+  if (!pin) return false;
   try {
     const r = await fetch(BUDGET_URL, {method: "POST", body: JSON.stringify(
-      {action: "setBudget", pin, co: "wow", key, value: val.replace(/[$,\s]/g, "")})});
+      {action: "setBudget", pin, co: "wow", key, value: String(rawVal).replace(/[$,%\s]/g, "")})});
     const j = await r.json();
-    if (j.ok) { localStorage.setItem(PIN_KEY, pin); BUDGETS = j.budgets; render(); }
-    else if (j.error === "bad-pin") { localStorage.removeItem(PIN_KEY); alert("Wrong PIN."); }
+    if (j.ok) { localStorage.setItem(PIN_KEY, pin); BUDGETS = j.budgets; return true; }
+    if (j.error === "bad-pin") { localStorage.removeItem(PIN_KEY); alert("Wrong PIN."); }
     else alert("Save failed: " + j.error);
   } catch (e) { alert("Save failed: " + e); }
+  return false;
+}
+async function editBudget(key, lbl) {
+  const parts = key.split("|");
+  const cur = (BUDGETS.wow || {})[key];
+  const label = lbl || `${parts[2] === "plan" ? "Plan" : "Budget"} for ${DATA.companies[parts[0]].label} ${parts[1]} ($)`;
+  const val = prompt(label + ":", cur || "");
+  if (val === null || val.trim() === "") return;
+  if (await saveWow(key, val)) render();
+}
+async function editPlans(wkKey) {
+  const fields = [["hvacPlan", "HVAC calls/day plan"]]
+    .concat(DATA.companies[curCo].plumb ? [["plumbPlan", "Plumbing calls/day plan"]] : [])
+    .concat([["roppPlan", "Ropps/day plan"]]);
+  let changed = false;
+  for (const [f, lbl] of fields) {
+    const key = `${curCo}|${wkKey}|${f}`;
+    const cur = (BUDGETS.wow || {})[key] || "";
+    const val = prompt(`${lbl} for ${DATA.companies[curCo].label}, effective ${wkKey} onward (blank = keep current):`, cur);
+    if (val === null) break;                       // cancel ends the flow
+    if (val.trim() === "" || val === cur) continue;
+    if (!(await saveWow(key, val))) break;
+    changed = true;
+  }
+  if (changed) render();
 }
 
 // ---------------------------------------------------------------- tooltip
@@ -532,7 +602,7 @@ async function load() {
     if (q.get("wk")) curWk = q.get("wk");
     buildNav(); render();
     $("updated").textContent = "Updated " + DATA.updated + " (live ServiceTitan API) · " + DATA.week1Note +
-      " · Weeks freeze 10 days after their Sunday; Avoca rate reflects ServiceTitan call types.";
+      " · Weeks freeze 10 days after their Sunday. Avoca rate and capacity plans are hand-keyed (PIN).";
     $("note").innerHTML = DATA.complete ? "" : `<span class="warn-note">History backfill in progress - some weeks appear as they finish.</span>`;
   } catch (e) {
     if (!DATA) $("board").innerHTML = `<div class="empty sec wide">Could not load data (${esc(e.message || e)})</div>`;
