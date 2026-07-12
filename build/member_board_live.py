@@ -28,6 +28,20 @@ Memberships come straight from /memberships/v2 (the system of record):
                 employee ids never collide, so sellers split cleanly into
                 the Tech leaderboard and the CSR/Office leaderboard.
   byBU          sales by the membership record's selling business unit.
+  totalRev      invoice subTotal (same revenue definition as the Command
+                Center) summed over the calendar month.
+  memberRev     the slice of totalRev where the customer was already a
+                member BEFORE the invoice date (a membership sold with the
+                job does not count its own visit as member revenue).
+  crossRev      the slice of memberRev billed in a different trade than
+                any of the member's plans were sold in - the playbook's
+                "memberships are the glue between service lines" number.
+  nonMemberJobs completed jobs whose customer was not a member before the
+  offered       job's completion day, and how many of those got an offer:
+                a membership SKU on any estimate created that month for the
+                job, or a membership created for that customer the same
+                day. missed offers = nonMemberJobs - offered; the playbook
+                target is a 100% offer rate, every customer every time.
 
 Snapshot metrics (active base, billing mix of the base, plan mix) are
 recomputed fresh every run from a status=Active fetch - they are cheap
@@ -46,6 +60,7 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -53,6 +68,7 @@ sys.path.insert(0, HERE)
 from command_center_live import (fetch_all, local_today, _load_json,
                                  map_companies, update_history)
 from csr_board_live import EXCLUDE_NAME, month_window_utc, _month_key
+from tech_board_live import _is_memb_sku
 
 HISTORY_FILE = os.path.join(ROOT, "data", "member-board-history.json")
 MONTH_FREEZE_DAYS = 10
@@ -82,6 +98,16 @@ def membership_types(company):
 def real_type_ids(type_names):
     return {tid for tid, name in type_names.items()
             if not NOT_A_MEMBERSHIP.search(name)}
+
+def _trade_of(bu_name):
+    n = (bu_name or "").lower()
+    if re.search(r"plumb|drain|sewer|water", n):
+        return "plumbing"
+    if re.search(r"electric", n):
+        return "electrical"
+    if re.search(r"hvac|air|heat|cool", n):
+        return "hvac"
+    return "other"
 
 def business_unit_names(company):
     co = COMPANIES[company]
@@ -114,10 +140,61 @@ def seller_roster(company):
     return roster
 
 
+# ---------------------------------------------------------------- member spans
+def _member_spans(company, customer_ids, real_ids, bu_names):
+    """{customerId: [(from_day, end_day_or_None, selling_trade)]} for real
+    memberships, batched 100 customers per request."""
+    co = COMPANIES[company]
+    ids = sorted(customer_ids)
+    batches = [ids[i:i + 100] for i in range(0, len(ids), 100)]
+    out = {}
+
+    def one(batch):
+        return fetch_all(co["tenant"], "/memberships/v2/tenant/{tenant}/memberships",
+                         {"customerIds": ",".join(map(str, batch))},
+                         page_size=200, max_pages=5)
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for rows in ex.map(one, batches):
+            for m in rows:
+                if m.get("membershipTypeId") not in real_ids:
+                    continue
+                start = (m.get("from") or m.get("createdOn") or "")[:10]
+                if not start:
+                    continue
+                end = (m.get("to") or "")[:10] or None
+                cancel = (m.get("cancellationDate") or "")[:10] or None
+                if cancel and (end is None or cancel < end):
+                    end = cancel
+                trade = _trade_of(bu_names.get(m.get("businessUnitId")))
+                out.setdefault(m["customerId"], []).append((start, end, trade))
+    return out
+
+def _member_on(spans, cid, day, buffer_days=0):
+    """(was a member before `day`, trades their plans were sold in).
+    buffer_days requires the membership to have started that many days
+    earlier - the Summit deck's revenue chart uses 7, so a membership sold
+    with an install doesn't count its own install as member revenue."""
+    if buffer_days:
+        d = dt.date.fromisoformat(day) - dt.timedelta(days=buffer_days)
+        cutoff = d.isoformat()
+    else:
+        cutoff = day
+    trades = set()
+    member = False
+    for start, end, trade in spans.get(cid, ()):
+        if start <= cutoff and start < day and (end is None or end >= day):
+            member = True
+            trades.add(trade)
+    return member, trades
+
+
 # ---------------------------------------------------------------- window core
 def _new_counters():
     return {"sold": 0, "soldBilling": {}, "canceled": 0, "checksWon": 0,
-            "jobsCompleted": 0, "sellers": {}, "byBU": {}}
+            "jobsCompleted": 0, "sellers": {}, "byBU": {},
+            "totalRev": 0.0, "memberRev": 0.0, "crossRev": 0.0,
+            "nonMemberJobs": 0, "offered": 0}
 
 def compute_month(company, year, month, real_ids, bu_names):
     """Raw counters for one tenant-local calendar month."""
@@ -127,6 +204,7 @@ def compute_month(company, year, month, real_ids, bu_names):
     c = _new_counters()
 
     # SELL - new memberships created in the window
+    sold_same_day = set()   # (customerId, created day) -> offer credit on jobs
     for m in fetch_all(tenant, "/memberships/v2/tenant/{tenant}/memberships",
                        {"createdOnOrAfter": start, "createdBefore": end},
                        page_size=500, max_pages=40):
@@ -144,6 +222,8 @@ def compute_month(company, year, month, real_ids, bu_names):
         bu = bu_names.get(m.get("businessUnitId"))
         if bu:
             c["byBU"][bu] = c["byBU"].get(bu, 0) + 1
+        if m.get("customerId"):
+            sold_same_day.add((m["customerId"], (m.get("createdOn") or "")[:10]))
 
     # RETAIN - cancels whose effective date falls in this month. A cancel
     # touches modifiedOn, so fetch everything modified since month start
@@ -165,10 +245,64 @@ def compute_month(company, year, month, real_ids, bu_names):
         page_size=500, max_pages=40))
 
     # Attach-rate denominator - every completed job is a membership chance
-    c["jobsCompleted"] = len(fetch_all(
-        tenant, "/jpm/v2/tenant/{tenant}/jobs",
-        {"completedOnOrAfter": start, "completedBefore": end},
-        page_size=500, max_pages=40))
+    jobs = fetch_all(tenant, "/jpm/v2/tenant/{tenant}/jobs",
+                     {"completedOnOrAfter": start, "completedBefore": end},
+                     page_size=500, max_pages=40)
+    c["jobsCompleted"] = len(jobs)
+
+    # Offer detection - jobs whose estimates carry a membership SKU
+    offer_jobs = set()
+    for est in fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
+                         {"createdOnOrAfter": start, "createdBefore": end},
+                         page_size=500, max_pages=40):
+        jid = est.get("jobId")
+        if jid and any(_is_memb_sku(company, (it.get("sku") or {}).get("name"))
+                       for it in (est.get("items") or [])):
+            offer_jobs.add(jid)
+
+    # Revenue - invoices dated in the calendar month (invoiceDate is a
+    # calendar date stored as midnight UTC, so the window is calendar too)
+    inv_start = f"{year:04d}-{month:02d}-01T00:00:00Z"
+    inv_end = f"{year + (month == 12):04d}-{month % 12 + 1:02d}-01T00:00:00Z"
+    invoices = fetch_all(tenant, "/accounting/v2/tenant/{tenant}/invoices",
+                         {"invoicedOnOrAfter": inv_start, "invoicedOnBefore": inv_end},
+                         page_size=500, max_pages=60)
+
+    # one membership lookup covers both the jobs and the invoices
+    cust_ids = ({j.get("customerId") for j in jobs if j.get("customerId")} |
+                {(i.get("customer") or {}).get("id") for i in invoices
+                 if (i.get("customer") or {}).get("id")})
+    spans = _member_spans(company, cust_ids, real_ids, bu_names)
+
+    for inv in invoices:
+        sub = float(inv.get("subTotal") or 0)
+        c["totalRev"] += sub
+        cid = (inv.get("customer") or {}).get("id")
+        day = (inv.get("invoiceDate") or "")[:10]
+        if not cid or not day:
+            continue
+        member, trades = _member_on(spans, cid, day, buffer_days=7)
+        if member:
+            c["memberRev"] += sub
+            inv_trade = _trade_of((inv.get("businessUnit") or {}).get("name"))
+            if trades and inv_trade != "other" and inv_trade not in trades:
+                c["crossRev"] += sub
+
+    for j in jobs:
+        cid = j.get("customerId")
+        day = (j.get("completedOn") or "")[:10]
+        if not cid or not day:
+            continue
+        member, _ = _member_on(spans, cid, day)
+        if member:
+            continue
+        c["nonMemberJobs"] += 1
+        if j.get("id") in offer_jobs or (cid, day) in sold_same_day:
+            c["offered"] += 1
+
+    c["totalRev"] = round(c["totalRev"], 2)
+    c["memberRev"] = round(c["memberRev"], 2)
+    c["crossRev"] = round(c["crossRev"], 2)
     return c
 
 
@@ -217,6 +351,10 @@ def compute_company(company, deadline=None, progress=None):
     for year, month in months:
         key = _month_key(year, month)
         entry = co_cache.get(key)
+        # months cached before the revenue/cross-sell/offer metrics existed
+        # are recomputed rather than reused
+        if entry and "totalRev" not in entry.get("m", {}):
+            entry = None
         if entry and key != current_key:
             month_end = dt.date(year + (month == 12), month % 12 + 1, 1)
             frozen = (today - month_end).days >= MONTH_FREEZE_DAYS and entry.get("final")
@@ -246,10 +384,9 @@ def compute_company(company, deadline=None, progress=None):
 def _sum_counters(dicts):
     total = _new_counters()
     for d in dicts:
-        total["sold"] += d["sold"]
-        total["canceled"] += d["canceled"]
-        total["checksWon"] += d["checksWon"]
-        total["jobsCompleted"] += d["jobsCompleted"]
+        for k in ("sold", "canceled", "checksWon", "jobsCompleted",
+                  "totalRev", "memberRev", "crossRev", "nonMemberJobs", "offered"):
+            total[k] += d.get(k, 0)
         for k, v in d["soldBilling"].items():
             total["soldBilling"][k] = total["soldBilling"].get(k, 0) + v
         for k, v in d["byBU"].items():
@@ -263,6 +400,9 @@ def _sum_counters(dicts):
 def _kpis(c):
     sold, jobs = c["sold"], c["jobsCompleted"]
     monthly = c["soldBilling"].get("Monthly", 0)
+    total_rev, member_rev = c.get("totalRev", 0), c.get("memberRev", 0)
+    cross_rev = c.get("crossRev", 0)
+    nm_jobs, offered = c.get("nonMemberJobs", 0), c.get("offered", 0)
     return {
         "sold": sold,
         "canceled": c["canceled"],
@@ -272,6 +412,15 @@ def _kpis(c):
         "attachRate": round(sold / jobs * 100, 1) if jobs else 0,
         "pctSoldMonthly": round(monthly / sold * 100, 1) if sold else 0,
         "soldBilling": c["soldBilling"],
+        "totalRev": round(total_rev, 2),
+        "memberRev": round(member_rev, 2),
+        "pctMemberRev": round(member_rev / total_rev * 100, 1) if total_rev else 0,
+        "crossRev": round(cross_rev, 2),
+        "pctCrossRev": round(cross_rev / member_rev * 100, 1) if member_rev else 0,
+        "nonMemberJobs": nm_jobs,
+        "offered": offered,
+        "offerRate": round(offered / nm_jobs * 100, 1) if nm_jobs else 0,
+        "missedOffers": nm_jobs - offered,
     }
 
 def _seller_rows(c, roster, company):
@@ -324,17 +473,28 @@ def compute(time_budget_secs=None, progress=None):
     # combined = sum of the three companies
     for view in boards:
         per_co = [boards[view][c] for c in COMPANIES]
-        kpis = {"sold": 0, "canceled": 0, "net": 0, "checksWon": 0,
-                "jobsCompleted": 0, "soldBilling": {}}
+        sum_keys = ("sold", "canceled", "net", "checksWon", "jobsCompleted",
+                    "totalRev", "memberRev", "crossRev", "nonMemberJobs", "offered")
+        kpis = {k: 0 for k in sum_keys}
+        kpis["soldBilling"] = {}
         for b in per_co:
-            for k in ("sold", "canceled", "net", "checksWon", "jobsCompleted"):
+            for k in sum_keys:
                 kpis[k] += b["kpis"][k]
             for k, v in b["kpis"]["soldBilling"].items():
                 kpis["soldBilling"][k] = kpis["soldBilling"].get(k, 0) + v
+        for k in ("totalRev", "memberRev", "crossRev"):
+            kpis[k] = round(kpis[k], 2)
         kpis["attachRate"] = (round(kpis["sold"] / kpis["jobsCompleted"] * 100, 1)
                               if kpis["jobsCompleted"] else 0)
         kpis["pctSoldMonthly"] = (round(kpis["soldBilling"].get("Monthly", 0)
                                         / kpis["sold"] * 100, 1) if kpis["sold"] else 0)
+        kpis["pctMemberRev"] = (round(kpis["memberRev"] / kpis["totalRev"] * 100, 1)
+                                if kpis["totalRev"] else 0)
+        kpis["pctCrossRev"] = (round(kpis["crossRev"] / kpis["memberRev"] * 100, 1)
+                               if kpis["memberRev"] else 0)
+        kpis["offerRate"] = (round(kpis["offered"] / kpis["nonMemberJobs"] * 100, 1)
+                             if kpis["nonMemberJobs"] else 0)
+        kpis["missedOffers"] = kpis["nonMemberJobs"] - kpis["offered"]
         key = lambda r: (-r["sold"], -r["soldMonthly"], r["name"])
         boards[view]["combined"] = {
             "kpis": kpis,

@@ -25,7 +25,7 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#f2f3f5
 .viewtabs .tab.on{background:#111}
 
 /* KPI strip */
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .kpi{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .kpi .v{font-size:34px;font-weight:900;line-height:1.05;letter-spacing:-.5px}
 .kpi .k{font-size:11px;font-weight:800;color:#8a919c;text-transform:uppercase;letter-spacing:.04em;margin-top:4px;line-height:1.2}
@@ -44,7 +44,12 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#f2f3f5
 .beliefs .b b{display:block;font-size:17px;font-weight:900;color:#fff}
 
 /* panels */
-.panels{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:12px;margin-bottom:12px}
+.panels{display:grid;grid-template-columns:1fr 1.4fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.splitbar{display:flex;height:26px;border-radius:8px;overflow:hidden;margin-top:12px;background:#eef0f3}
+.splitbar div{min-width:2px;margin-right:2px}
+.splitbar div:last-child{margin-right:0}
+.bignum{font-size:30px;font-weight:900;letter-spacing:-.5px;margin-top:10px}
+.bignum small{font-size:12px;font-weight:800;color:#8a919c;margin-left:6px}
 .panel{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);min-height:210px;display:flex;flex-direction:column}
 .p-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#555}
 .p-sub{font-size:10.5px;font-weight:700;color:#9aa1ab;margin-top:2px}
@@ -104,7 +109,7 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#f2f3f5
 .warn-note{color:#b45309}
 .empty{padding:40px 0;text-align:center;font-size:15px;font-weight:800;color:#999}
 @media(max-width:1200px){
-  .kpis{grid-template-columns:repeat(3,1fr)}
+  .kpis{grid-template-columns:repeat(2,1fr)}
   .panels{grid-template-columns:1fr 1fr}
   .panels .panel:nth-child(2){grid-column:1/-1;order:-1}
 }
@@ -153,6 +158,10 @@ let curView = "mtd", curBoard = "sierra";
 
 const $ = id => document.getElementById(id);
 const fmt = n => (n || 0).toLocaleString("en-US");
+const money = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M"
+                 : n >= 1e4 ? "$" + Math.round(n / 1e3) + "k"
+                 : "$" + Math.round(n || 0).toLocaleString("en-US");
+const MEMBER_C = "#15803d", NONMEM_C = "#cbd5e1", CROSS_C = "#7c3aed";
 
 function co() { return curBoard === "combined" ? COMBINED : DATA.companies[curBoard]; }
 
@@ -171,6 +180,11 @@ function kpisHtml(k, snap) {
       <div class="k">Net Member Growth</div><div class="s">sold − canceled</div></div>
     <div class="kpi"><div class="v">${fmt(k.checksWon)}</div><div class="k">System Checks Run</div>
       <div class="s">1+ check ≈ 4× retention</div></div>
+    <div class="kpi"><div class="v">${money(k.memberRev)}</div><div class="k">Member Revenue</div>
+      <div class="s">${k.pctMemberRev}% of ${money(k.totalRev)} total</div></div>
+    <div class="kpi"><div class="v ${k.offerRate >= 75 ? "pos" : "neg"}">${k.offerRate}%</div>
+      <div class="k">Membership Offer Rate</div>
+      <div class="s">${fmt(k.missedOffers)} of ${fmt(k.nonMemberJobs)} non-member jobs got no offer</div></div>
   </div>`;
 }
 
@@ -222,6 +236,37 @@ function trendHtml() {
   </div>`;
 }
 
+function revHtml(k) {
+  const nonMem = Math.max(0, k.totalRev - k.memberRev);
+  const same = Math.max(0, k.memberRev - k.crossRev);
+  const row = (label, c, val, pctOf) =>
+    `<div class="mixrow"><span class="dot" style="background:${c}"></span>${label}
+     <span class="n">${money(val)}</span><span class="p">${pctOf ? Math.round(val / pctOf * 100) + "%" : ""}</span></div>`;
+  return `<div class="panel">
+    <div class="p-title">Revenue from active members</div>
+    <div class="p-sub">Members active 7+ days before the invoice</div>
+    <div class="bignum">${k.pctMemberRev}%<small>of all revenue</small></div>
+    <div class="splitbar">
+      <div style="flex:${k.memberRev || 0.001};background:${MEMBER_C}" title="Member revenue: ${money(k.memberRev)}"></div>
+      <div style="flex:${nonMem || 0.001};background:${NONMEM_C}" title="Non-member revenue: ${money(nonMem)}"></div>
+    </div>
+    <div class="mixlegend">
+      ${row("Member revenue", MEMBER_C, k.memberRev, k.totalRev)}
+      ${row("Non-member revenue", NONMEM_C, nonMem, k.totalRev)}
+    </div>
+    <div class="p-title" style="margin-top:14px">Cross-sell — the glue</div>
+    <div class="p-sub">Member revenue in a different trade than their plan</div>
+    <div class="splitbar">
+      <div style="flex:${k.crossRev || 0.001};background:${CROSS_C}" title="Cross-trade: ${money(k.crossRev)}"></div>
+      <div style="flex:${same || 0.001};background:${MEMBER_C}" title="Same trade: ${money(same)}"></div>
+    </div>
+    <div class="mixlegend">
+      ${row("Cross-trade", CROSS_C, k.crossRev, k.memberRev)}
+      ${row("Same trade", MEMBER_C, same, k.memberRev)}
+    </div>
+  </div>`;
+}
+
 function buHtml(b) {
   let rows, title, sub;
   if (curBoard === "combined") {
@@ -269,7 +314,7 @@ function render() {
   $("t-view").textContent = curView.toUpperCase() + " · " + DATA.period[curView];
   $("board").innerHTML =
     kpisHtml(b.kpis, snap) + BELIEFS +
-    `<div class="panels">${mixHtml(snap)}${trendHtml()}${buHtml(b)}</div>` +
+    `<div class="panels">${mixHtml(snap)}${trendHtml()}${revHtml(b.kpis)}${buHtml(b)}</div>` +
     `<div class="boards2">
       ${lbHtml(b.techs, "Tech Leaderboard", "memberships sold · " + DATA.period[curView], "No tech sales yet")}
       ${lbHtml(b.csrs, "CSR & Office Leaderboard", "memberships sold · " + DATA.period[curView], "No office sales yet")}

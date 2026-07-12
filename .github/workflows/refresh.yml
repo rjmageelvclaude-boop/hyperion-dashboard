@@ -86,7 +86,7 @@ jobs:
           SCORECARD_BUDGET: "120"
           # Generous: a cold cache re-backfills every week since May 1 in one run.
           WOW_BOARD_BUDGET: "300"
-          MEMBER_BOARD_BUDGET: "120"
+          MEMBER_BOARD_BUDGET: "300"
           # Pay privacy: pay ships only as an AES-256-GCM blob under this
           # passphrase; unset -> the scorecard publishes without pay.
           SCORECARD_KEY: ${{ secrets.SCORECARD_KEY }}
