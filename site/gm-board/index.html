@@ -112,6 +112,7 @@ tr.tot td{border-top:2px solid #111;border-bottom:0;font-weight:900;background:#
   <div class="topbar">
     <div class="big-title">GROSS MARGIN<small id="t-sub">HVAC INSTALL · SIERRA</small></div>
     <div class="tabs" id="tabs"></div>
+    <button class="btn" onclick="exportCsv()">Export CSV</button>
     <button class="btn" onclick="window.print()">Print report</button>
   </div>
   <div id="board"><div class="empty">Waiting for data…</div></div>
@@ -339,6 +340,27 @@ function sortBy(k) {
   renderTableOnly();
 }
 function pick(key) { curKey = key; render(); }
+
+function exportCsv() {
+  const m = monthOf();
+  if (!m) return;
+  const cmap = m._cust || null;
+  const cols = COLS.filter(([k]) => cmap || k !== "cust");
+  const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [cols.map(([,label]) => esc(label)).join(",")];
+  for (const r of m.jobs) {
+    lines.push(cols.map(([k]) => {
+      if (k === "cust") return esc(cmap[r.id] || "");
+      if (k === "gm") return (r.gm * 100).toFixed(2) + "%";
+      return typeof r[k] === "number" ? r[k] : esc(r[k]);
+    }).join(","));
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\r\n")], {type: "text/csv"}));
+  a.download = `gross-margin-${m.key}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 function buildTabs() {
   $("tabs").innerHTML = DATA.months.map(m => {
