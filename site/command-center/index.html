@@ -313,7 +313,7 @@ function render(){
   ccB+=divd("Phones")+mrow("Inbound Calls",g("callsInbound"),"#",undefined,"callsInbound")+mrow("Inbound Leads",g("inboundLeads"),"#",undefined,"inboundLeads")+mrow("Inbound Booking Rate",g("bookingRate"),"%",undefined,"bookingRate");
   ccB+=divd("ROPPs")+mrow("ROPP Budget",roppBgt,"#",undefined,null)+mrow("ROPPs on Board",g("hvacRoppsOnBoard"),"#",roppBgt,"hvacRoppsOnBoard");
 
-  var tB=mrow("ROPPs on Board",g("hvacRoppsOnBoard"),"#",roppBgt,"hvacRoppsOnBoard")+mrow("ROPPs Ran",g("hvacRoppsRan"),"#",undefined,"hvacRoppsRan")+mrow("TGLs Set",g("tglsSet"),"#",undefined,"tglsSet")+mrow("TGLs Set Same Day",g("tglsSetSameDay"),"#",undefined,"tglsSetSameDay")+mrow("Flip Rate",flipRate,"%",undefined,null);
+  var tB=mrow("ROPPs on Board",g("hvacRoppsOnBoard"),"#",roppBgt,"hvacRoppsOnBoard")+mrow("ROPPs Ran",g("hvacRoppsRan"),"#",undefined,"hvacRoppsRan")+mrow("TGLs Set",g("tglsSet"),"#",undefined,"tglsSet")+mrow("TGLs Set Same Day",g("tglsSetSameDay"),"#",undefined,"tglsSetSameDay")+mrow("TGLs Canceled",g("tglsCanceled"),"#",undefined,"tglsCanceled")+mrow("Flip Rate",flipRate,"%",undefined,null);
 
   var canB=mrow("HVAC Service & Maintenance",g("hvacSMCanceled"),"#",undefined,"hvacSMCanceled")+mrow("HVAC Sales",g("hvacSalesCanceled"),"#",undefined,"hvacSalesCanceled");
   if(co.plumb){canB+=mrow("Plumbing",g("plumbCanceled"),"#",undefined,"plumbCanceled")}
