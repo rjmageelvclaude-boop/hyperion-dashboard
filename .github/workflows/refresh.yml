@@ -14,10 +14,9 @@ permissions:
   pages: write
   id-token: write
 
-# Never cancel a run that is already building: with five boards a full run can
-# outlast the dispatch interval, and a cancelled run never reaches the deploy
-# step (the site silently stops updating). New dispatches queue behind the
-# active run; GitHub keeps at most one queued and drops the rest.
+# Never cancel a run that is already building: a cancelled run never reaches
+# the deploy step (the site silently stops updating). New dispatches queue
+# behind the active run; GitHub keeps at most one queued and drops the rest.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -36,10 +35,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install --quiet openpyxl
-
-      - name: Restore cached reports + Command Center history
+      - name: Restore cached board histories
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -56,8 +52,8 @@ jobs:
           key: reports-${{ github.run_id }}
           restore-keys: reports-
 
-      # ---- All dashboards: Gmail-fed contest board + live ServiceTitan boards.
-      # The API boards are independent processes writing independent files, so
+      # ---- All dashboards, live from the ServiceTitan API.
+      # The boards are independent processes writing independent files, so
       # they run in parallel - wall time is the slowest board, not the sum.
       # Each process throttles itself (ST_MAX_CONCURRENCY) and the client
       # retries 429s with backoff, so the combined load stays polite.
@@ -65,8 +61,6 @@ jobs:
         timeout-minutes: 15
         continue-on-error: true
         env:
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ST_SECRETS_JSON: ${{ secrets.ST_SECRETS_JSON }}
           ST_TIMEOUT: "120"
           ST_PAGE_CONCURRENCY: "4"   # concurrent pages per list fetch
@@ -83,37 +77,22 @@ jobs:
           mkdir -p secrets logs
           printf '%s' "$ST_SECRETS_JSON" > secrets/servicetitan.json
 
-          # Contest dashboard (emailed reports) - independent of the API boards
-          (
-            timeout 300 python build/fetch_gmail.py || echo "Gmail fetch failed - using cached reports"
-            if [ -f data/sales_by_rep.xlsx ] && [ -f data/installed_by_rep.xlsx ]; then
-              python build/parse_reports.py
-            else
-              echo "Missing report file(s) - deploying last committed data."
-            fi
-          ) > logs/contest.log 2>&1 &
-          contest_pid=$!
-
-          # Live API boards, staggered a touch so eight processes don't hit
-          # the auth server in the same instant.
-          board_pids=""
+          # Boards staggered a touch so eight processes don't hit the auth
+          # server in the same instant.
           for board in command_center call_board ca_board tech_board plumb_board csr_board install_board silo_board; do
             python "build/${board}_refresh.py" > "logs/${board}.log" 2>&1 \
               || echo "${board} refresh failed - deploying cached data.json" >> "logs/${board}.log" &
-            board_pids="$board_pids $!"
             sleep 2
           done
-          wait $board_pids
+          wait
 
-          # GOAT board reads the other boards' data.json - after the boards,
-          # overlapping the contest lane (it doesn't touch Gmail data)
+          # GOAT board reads the other boards' data.json - always last
           python build/goat_board_refresh.py || echo "GOAT board refresh failed - deploying cached data.json"
-          wait $contest_pid
 
           for f in logs/*.log; do echo "::group::$f"; cat "$f"; echo "::endgroup::"; done
           rm -rf secrets logs
 
-      - name: Save reports + history for next run
+      - name: Save board histories for next run
         uses: actions/cache/save@v4
         if: always()
         with:

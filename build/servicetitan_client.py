@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Thin client for the live ServiceTitan API, used to answer ad-hoc questions
-against real-time data (as opposed to the emailed-report pipeline in
-parse_reports.py, which is the source of truth for the dashboard itself).
+Thin client for the live ServiceTitan API - the data source for every hosted
+dashboard, and handy for ad-hoc questions against real-time data.
 
 Credentials live in secrets/servicetitan.json (git-ignored, never commit).
 There can be more than one OAuth "app" (e.g. a Sierra-only connection and a
