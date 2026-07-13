@@ -83,8 +83,8 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#f2f3f5
 .burow .bnum{width:34px;text-align:right;font-weight:900}
 
 /* leaderboards */
-.boards2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.lb{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.boards2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.lb{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);min-width:0}
 .lb-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
 .lb-title{font-size:17px;font-weight:900;text-transform:uppercase;letter-spacing:-.3px}
 .lb-sub{font-size:10.5px;font-weight:700;color:#9aa1ab}
@@ -115,9 +115,18 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#f2f3f5
   .panels{grid-template-columns:1fr 1fr}
   .panels .panel:nth-child(2){grid-column:1/-1;order:-1}
 }
+@media(max-width:480px){
+  .wrap{padding:10px 10px 20px}
+  .topbar{gap:8px 12px}
+  .big-title{font-size:24px;white-space:normal}
+  .big-title .view{display:block;margin-left:0;margin-top:3px}
+  .nav{justify-content:flex-start}
+  .tabs{justify-content:flex-start}
+  .beliefs .b{min-width:130px}
+}
 @media(max-width:700px){
   .kpis{grid-template-columns:1fr 1fr}
-  .panels,.boards2{grid-template-columns:1fr}
+  .panels,.boards2{grid-template-columns:minmax(0,1fr)}
   .big-title{font-size:30px}
   .kpi .v{font-size:26px}
 }

@@ -108,11 +108,16 @@ table.kpi{width:100%;border-collapse:collapse;font-size:13px}
 .loading{max-width:920px;margin:60px auto;text-align:center;color:var(--chrome-ink-2);font-weight:700}
 
 @media (max-width:640px){
-  .sheet{padding:26px 20px}
+  .sheet{padding:26px 16px;overflow-x:auto}
+  .sheet-wrap{padding:0 10px}
+  .toolbar{padding:12px 10px 0}
+  select,button,input[type=password]{font-size:16px}
   .pay-grid{grid-template-columns:1fr 1fr}
   .notes,.signatures{grid-template-columns:1fr}
   .masthead{flex-direction:column}
   .masthead .meta{text-align:left}
+  table.kpi{font-size:12px}
+  .kpi th,.kpi td{padding:6px 6px}
 }
 
 @media print{

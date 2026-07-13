@@ -82,7 +82,20 @@ body{font-family:'Montserrat','Segoe UI',system-ui,sans-serif;background:#e9eaec
 .footer{margin-top:14px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#999;flex-wrap:wrap;gap:6px}
 .warn{color:#b45309}
 @media(max-width:1250px){.board{flex-direction:column}.feature{width:100%}.fc-photo{height:300px}.grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:760px){.grid{grid-template-columns:1fr}.big-title{font-size:32px}}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.big-title{font-size:32px}.tabwrap{justify-content:flex-start}}
+@media(max-width:480px){
+  .wrap{padding:10px 10px 20px}
+  .topbar{gap:10px 14px}
+  .big-title{font-size:26px}
+  .controls{font-size:13px;gap:10px}
+  .card,.fcard{padding:12px 12px}
+  .fc-name{font-size:26px}
+  .fc-photo{height:260px}
+  .c-photo{width:120px;height:150px}
+  .fcard .krow{font-size:16px;padding:10px 12px}
+  .salesbar .v{font-size:20px}
+  .salesbar .l{font-size:15px}
+}
 </style>
 </head>
 <body>

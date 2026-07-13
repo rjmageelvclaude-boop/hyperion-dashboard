@@ -28,7 +28,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#f6f8fb;min-
 .budget-panel{background:#fff;border-bottom:3px solid var(--co);padding:20px 24px;box-shadow:0 4px 12px rgba(0,0,0,.06);display:none}
 .budget-panel.open{display:block}
 .budget-panel-inner{max-width:1140px;margin:0 auto}
-.budget-grid{display:grid;gap:12px}
+.budget-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .budget-item{background:#f8fafc;border-radius:10px;padding:12px 16px;border:1px solid #e2e8f0}
 .budget-item label{font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;display:block;margin-bottom:6px;letter-spacing:.04em}
 .budget-item input{width:100%;padding:6px 10px;font-size:18px;font-weight:800;border:2px solid #e2e8f0;border-radius:6px;outline:none;background:#fff;color:#0f172a}
@@ -68,6 +68,38 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#f6f8fb;min-
 .viewing-banner{background:#fef3c7;border-bottom:2px solid #f59e0b;padding:10px 24px;text-align:center;font-size:13px;font-weight:600;color:#92400e}
 .code-pink-overlay{position:fixed;inset:0;pointer-events:none;z-index:9999;background:#ec4899;animation:codePinkBlink 1.1s ease-in-out infinite}
 @keyframes codePinkBlink{0%,100%{opacity:0}50%{opacity:.32}}
+.header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px 16px;margin-bottom:20px;flex-wrap:wrap}
+.header-actions{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+@media(max-width:900px){
+  .two-col{grid-template-columns:1fr}
+  .hero-grid{grid-template-columns:repeat(2,1fr)}
+  .budget-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:640px){
+  .header{padding:16px 14px 14px}
+  .main{padding:14px 10px}
+  .company-bar{padding:8px 14px}
+  .viewing-banner{padding:8px 14px}
+  .title{font-size:18px}
+  .header-meta{flex-wrap:wrap;gap:6px 12px}
+  .header-top{margin-bottom:14px}
+  .header-actions{align-items:flex-start;text-align:left}
+  .header-actions>div:first-child{flex-wrap:wrap}
+  .date-pick{font-size:16px}
+  .portfolio-strip{grid-template-columns:1fr;gap:8px;margin-top:14px}
+  .budget-panel{padding:16px 14px}
+  .budget-grid{grid-template-columns:1fr}
+  .hero-grid{grid-template-columns:1fr;gap:10px}
+  .hero-card{padding:12px 14px}
+  .two-col{gap:12px}
+  .metric-row{padding:7px 8px}
+  .m-label{font-size:12px}
+  .m-val{width:76px;font-size:13px}
+  .m-pct{width:38px}
+}
+@media(max-width:430px){
+  .m-spark28{display:none}
+}
 </style>
 </head>
 <body>
@@ -370,10 +402,10 @@ function render(){
   var viewBanner=viewDate?'<div class="viewing-banner">Viewing: '+vd.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+' <button onclick="setViewDate(null)" style="background:#f59e0b;color:#fff;border:none;border-radius:4px;padding:4px 12px;font-weight:600;cursor:pointer;margin-left:12px;font-size:12px">Back to Today</button></div>':"";
 
   document.getElementById("app").innerHTML=
-    '<div class="header"><div class="header-inner"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div><div class="greeting">'+greet+', RJ</div><div class="title">InterMountain Command Center</div><div class="header-meta"><span>'+vdMonthName+' '+vdYear+'</span><span style="display:flex;align-items:center;gap:4px">'+(isToday?'<span class="pulse-dot"></span> ':'')+' Day '+vdDay+' of '+dim+'</span><span>Budgeted Day '+bde+' of '+bd+(bdr>0?' · '+bdr+' remaining':'')+'</span></div></div><div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px"><div style="display:flex;gap:8px;align-items:center"><input type="date" class="date-pick" value="'+(viewDate||toYMD(new Date()))+'" onchange="setViewDate(this.value)"><button class="btn'+(sOpen?" active":"")+'" onclick="sOpen=!sOpen;render()"><span style="font-size:14px">⚙</span> '+(sOpen?"Close":"Budgets")+'</button></div><button class="btn" onclick="viewDate=null;refresh(true)" style="font-size:11px">↻ Refresh Live Data</button><div class="last-pull"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:'+(lp?"#22c55e":"#64748b")+'"></span> '+(lp?"Last pull: "+lp:"Loading...")+'</div><div class="last-pull">ST Data: '+lastUpd+'</div></div></div><div class="portfolio-strip">'+pc2+'</div></div></div>'+
+    '<div class="header"><div class="header-inner"><div class="header-top"><div><div class="greeting">'+greet+', RJ</div><div class="title">InterMountain Command Center</div><div class="header-meta"><span>'+vdMonthName+' '+vdYear+'</span><span style="display:flex;align-items:center;gap:4px">'+(isToday?'<span class="pulse-dot"></span> ':'')+' Day '+vdDay+' of '+dim+'</span><span>Budgeted Day '+bde+' of '+bd+(bdr>0?' · '+bdr+' remaining':'')+'</span></div></div><div class="header-actions"><div style="display:flex;gap:8px;align-items:center"><input type="date" class="date-pick" value="'+(viewDate||toYMD(new Date()))+'" onchange="setViewDate(this.value)"><button class="btn'+(sOpen?" active":"")+'" onclick="sOpen=!sOpen;render()"><span style="font-size:14px">⚙</span> '+(sOpen?"Close":"Budgets")+'</button></div><button class="btn" onclick="viewDate=null;refresh(true)" style="font-size:11px">↻ Refresh Live Data</button><div class="last-pull"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:'+(lp?"#22c55e":"#64748b")+'"></span> '+(lp?"Last pull: "+lp:"Loading...")+'</div><div class="last-pull">ST Data: '+lastUpd+'</div></div></div><div class="portfolio-strip">'+pc2+'</div></div></div>'+
     errBanner+viewBanner+
     '<div class="company-bar" style="background:'+co.grad+'"><div class="company-bar-inner"><span>'+co.name+'</span><span>'+bd+' budgeted days ('+totalWeekdays+' weekdays'+(nbdCount>0?' minus '+nbdCount+' off':'')+')</span></div></div>'+
-    '<div class="budget-panel'+(sOpen?" open":"")+'"><div class="budget-panel-inner"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Monthly Budgets & Overrides — '+co.short+'</div><div style="font-size:11px;margin-bottom:14px;color:'+(budgetsSynced?"#16a34a":"#ca8a04")+'">'+(budgetsSynced?"● Shared budgets — changes here update every viewer":"● Local to this device — shared budget server not connected")+'</div><div class="budget-grid" style="grid-template-columns:repeat(3,1fr)">'+bHtml+'</div></div></div>'+
+    '<div class="budget-panel'+(sOpen?" open":"")+'"><div class="budget-panel-inner"><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Monthly Budgets & Overrides — '+co.short+'</div><div style="font-size:11px;margin-bottom:14px;color:'+(budgetsSynced?"#16a34a":"#ca8a04")+'">'+(budgetsSynced?"● Shared budgets — changes here update every viewer":"● Local to this device — shared budget server not connected")+'</div><div class="budget-grid">'+bHtml+'</div></div></div>'+
     '<div class="main"><div class="hero-grid">'+
     hero("Today's Revenue",dailyRev,"$",dailyRevBgt,null,true)+
     hero("Today's Sales",dailySales,"$",dailySalesBgt,null,true)+
