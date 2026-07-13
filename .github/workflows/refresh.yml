@@ -14,17 +14,57 @@ permissions:
   pages: write
   id-token: write
 
-# Never cancel a run that is already building: a cancelled run never reaches
-# the deploy step (the site silently stops updating). New dispatches queue
-# behind the active run; GitHub keeps at most one queued and drops the rest.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
+  # A run can dead-queue on GitHub's side (runner never assigned - happened
+  # 2026-07-13, froze every board for 12 hours). It never starts, never times
+  # out, and holds the concurrency slot forever, so no later dispatch runs.
+  # This job carries no concurrency lock and no dependency on the build job,
+  # so it executes on every dispatch regardless of the jam, and cancels any
+  # run stuck long past what a healthy cycle can take.
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel dead-queued runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SELF: ${{ github.run_id }}
+        run: |
+          now=$(date -u +%s)
+          gh api "repos/$REPO/actions/workflows/refresh.yml/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.status != "completed") | "\(.id) \(.status) \(.created_at)"' |
+          while read -r id status created; do
+            [ "$id" = "$SELF" ] && continue
+            age=$(( (now - $(date -u -d "$created" +%s)) / 60 ))
+            # Healthy runs build in ~5 min (job timeout 25); queueing behind
+            # an active build is bounded by that build. Anything beyond these
+            # limits is wedged, and a wedged queued run blocks all boards.
+            case "$status" in
+              in_progress) limit=35 ;;
+              *)           limit=20 ;;  # queued / pending / waiting / requested
+            esac
+            if [ "$age" -ge "$limit" ]; then
+              echo "::warning title=Watchdog::cancelling stuck run $id ($status for ${age} min)"
+              gh api -X POST "repos/$REPO/actions/runs/$id/cancel" \
+                || gh api -X POST "repos/$REPO/actions/runs/$id/force-cancel" \
+                || true
+            fi
+          done
+
   build-and-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Never cancel a run that is already building: a cancelled run never
+    # reaches the deploy step (the site silently stops updating). New
+    # dispatches queue behind the active run; GitHub keeps at most one queued
+    # and drops the rest. Job-level (not workflow-level) so a wedged build
+    # can never block the watchdog above.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
