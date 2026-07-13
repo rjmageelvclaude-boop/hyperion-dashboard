@@ -25,9 +25,11 @@ Metric definitions (validated against the old report-based feed):
                         (install-BU jobs with an "Install ..." type; part installs,
                         recalls, QA, drywall, finish jobs excluded); same-day =
                         install job also CREATED that day (sold + installed same day)
-  - install callbacks = return trips ON TODAY'S BOARD to a location with a system
-                        install completed in the last 30 days (drywall/QA/permit/
-                        finish/startup excluded); >2 total trips = CODE PINK
+  - install callbacks = return trips ON TODAY'S BOARD to a location with an
+                        install completed in the last 30 days - installs AND the
+                        return trips count in any department (service techs run
+                        both at RUS/ULT and for plumbing); drywall/QA/permit/
+                        finish/startup excluded; >2 total trips = CODE PINK
 
 CLI smoke test:
     py build/command_center_live.py sierra            # today's numbers
@@ -124,6 +126,17 @@ def _is_system_install(bucket, jt_name):
     startup, finish-job and part-install traffic - none of that is an install
     (RJ 2026-07-12: the board showed 4 HVAC installs when the raw BU count said 17)."""
     return (bucket in INSTALL_BUCKETS and "install" in jt_name.lower()
+            and not re.search(r"\bpart\b", jt_name, re.I))
+
+
+def _is_install_anchor(bucket, jt_name):
+    """An install that gets callback tracking: any actual install job in a
+    mapped operating BU, not just the install BUs. Russett/Ultimate run install
+    callbacks with service techs, and Sierra/Ultimate plumbing installs (water
+    heaters, toilets, disposals) can be booked through the service departments
+    (RJ 2026-07-12) - so installs anchored anywhere except HVAC Sales count."""
+    return (bucket is not None and bucket != "hvac_sales"
+            and "install" in jt_name.lower()
             and not re.search(r"\bpart\b", jt_name, re.I))
 
 
@@ -525,11 +538,13 @@ def _local_date_str(ts, tz):
 def compute_install_callbacks(company):
     """Install callbacks ON TODAY'S BOARD (RJ 2026-07-12: only today's returns).
 
-    Anchor installs = real system installs (_is_system_install) completed in the
-    last CALLBACK_LOOKBACK_DAYS. A return trip = any job at the same location
-    created AFTER the install completed - excluding expected follow-ups
-    (_CALLBACK_EXEMPT: drywall/QA/permit/finish/startup), canceled jobs, sales
-    estimates, and new system installs (a second purchase is not a callback).
+    Anchor installs = install jobs in any mapped BU except HVAC Sales
+    (_is_install_anchor) completed in the last CALLBACK_LOOKBACK_DAYS - the
+    service departments run installs and callbacks too. A return trip = any job
+    in any department at the same location created AFTER the install completed -
+    excluding expected follow-ups (_CALLBACK_EXEMPT: drywall/QA/permit/finish/
+    startup), canceled jobs, sales-BU estimate visits (a recall booked in the
+    sales BU still counts), and other installs (a new purchase isn't a callback).
     Listed rows are return trips with an appointment TODAY; `trips` = total
     times back since the install (today included); >2 = CODE PINK (the board
     blinks). Current-state only - not part of per-day history.
@@ -550,15 +565,17 @@ def compute_install_callbacks(company):
                        {"completedOnOrAfter": win_start, "completedBefore": day_end},
                        page_size=500, max_pages=100):
         if (j.get("jobStatus") == "Completed" and j.get("locationId")
-                and _is_system_install(bucket(j), jtname(j))):
+                and _is_install_anchor(bucket(j), jtname(j))):
             installs_by_loc.setdefault(j["locationId"], []).append(j)
 
     def is_trip(j, install):
+        name = jtname(j)
         return (j["id"] != install["id"] and j.get("jobStatus") != "Canceled"
                 and (j.get("createdOn") or "") > (install.get("completedOn") or "")
-                and bucket(j) != "hvac_sales"
-                and not _is_system_install(bucket(j), jtname(j))
-                and not _CALLBACK_EXEMPT.search(jtname(j)))
+                and not _is_install_anchor(bucket(j), name)  # a new purchase isn't a callback
+                # sales-BU estimate visits don't count, but a recall booked there does
+                and (bucket(j) != "hvac_sales" or re.search(r"recall|warranty", name, re.I))
+                and not _CALLBACK_EXEMPT.search(name))
 
     # Every return trip was created after its install completed, and installs
     # only reach back CALLBACK_LOOKBACK_DAYS, so one created-window pull covers
