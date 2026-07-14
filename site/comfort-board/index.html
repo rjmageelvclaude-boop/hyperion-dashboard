@@ -83,29 +83,6 @@ table.g .dim{color:var(--faint)}
 .trend.p{color:var(--good)}.trend.n{color:var(--bad)}.trend.z{color:var(--faint)}
 .edit{cursor:pointer}
 .edit:hover{outline:2px dashed var(--accent);outline-offset:-2px;border-radius:6px}
-.setup-top{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;margin-bottom:14px}
-.krow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:10px}
-.ktile{border-radius:10px;padding:12px 8px;text-align:center;background:var(--accent);color:var(--accent-ink)}
-.ktile .kv{font-size:19px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
-.ktile .kl{font-size:9.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;opacity:.85;margin-top:5px}
-.ktile.dark{background:#2e3542;color:#fff}
-:root[data-theme="dark"] .ktile.dark{background:#3a4150}
-.pa-side{display:flex;flex-direction:column;gap:12px}
-.pa-card{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:12px 14px}
-.pa-duo{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center}
-.pa-duo b,.pa-item b,.strip b{display:block;font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
-.pa-duo span,.pa-item span,.strip span{font-size:10.5px;font-weight:700;color:var(--muted)}
-.pa-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.pa-pill{text-align:center;font-size:10.5px;font-weight:800;letter-spacing:.08em;border-radius:999px;padding:5px 0;margin-bottom:8px;background:var(--surface2);color:var(--muted);border:1px solid var(--hair)}
-.pa-pill.act{background:#e9c83d;color:#3d3305;border-color:transparent}
-:root[data-theme="dark"] .pa-pill.act{background:rgba(240,178,104,.30);color:var(--warn)}
-.pa-plan{background:var(--surface2)}
-.pa-act{background:var(--warn-bg)}
-.pa-item{text-align:center;padding:8px 0}
-.pa-item+.pa-item{border-top:1px solid var(--hair)}
-.strip{display:grid;grid-template-columns:repeat(3,1fr);text-align:center;margin-bottom:16px}
-@media(max-width:1200px){.setup-top{grid-template-columns:1fr}}
-@media(max-width:700px){.krow{grid-template-columns:repeat(3,minmax(0,1fr))}.pa-pair{grid-template-columns:1fr}}
 .setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:14px}
 .setup-box{background:var(--surface);border:1px solid var(--hair);border-radius:10px;overflow:hidden}
 .setup-box h3{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);padding:10px 14px 6px}
@@ -603,70 +580,11 @@ function renderTurnovers(){
 }
 
 // ── setup ──
-// Daily scoreboard layout modeled on the Power BI comfort dashboard: today's
-// KPI tiles per lead type, workdays + planned-vs-actual pace cards, calls-ran
-// strip, Actual MTD vs Expectations MTD tables, then the plan inputs.
+// Actual MTD vs Expectations MTD tables, then the plan inputs.
 function renderSetup(){
   var b=B(),p=planCalc(),clock=workdayClock(),m=mtdTotals();
   var frac=clock.total?clock.elapsed/clock.total:0;
   function fmtPar(v){var s="$"+Math.round(Math.abs(v)).toLocaleString();return v<0?"("+s+")":s}
-
-  // today's advisor activity by lead type
-  var dt={},dtot={leads:0,sold:0,revenue:0};
-  TYPES.forEach(function(t){dt[t[0]]={leads:0,sold:0,revenue:0}});
-  advisorsForDay(b.today).forEach(function(a){
-    TYPES.forEach(function(t){var x=a.types[t[0]];
-      dt[t[0]].leads+=x.leads;dt[t[0]].sold+=x.sold;dt[t[0]].revenue+=x.revenue;
-      dtot.leads+=x.leads;dtot.sold+=x.sold;dtot.revenue+=x.revenue});
-  });
-  // today's service opportunity calls (tech runs)
-  var demand=0,maintc=0;
-  techsForDay(b.today).forEach(function(r){demand+=r.codOpp;maintc+=r.maintOpp});
-  // MTD service calls + month-end paces
-  var svcMtd=0;b.techs.forEach(function(t){svcMtd+=(t.codOpp||0)+(t.maintOpp||0)});
-  var svcPace=clock.elapsed?Math.round(svcMtd/clock.elapsed*clock.total):null;
-  var revPace=clock.elapsed?m._total.revenue/clock.elapsed*clock.total:null;
-  var plannedDaily=(p.revenue!==null&&clock.total)?p.revenue/clock.total:null;
-
-  function tile(v,l,dark){return'<div class="ktile'+(dark?" dark":"")+'"><div class="kv">'+v+'</div><div class="kl">'+l+'</div></div>'}
-  var NAMES={turnover:"TGL",marketed:"Marketed",costco:"Costco",selfgen:"Self-Gen"};
-  var tiles=typeCols().map(function(t){
-    var k=t[0],n=NAMES[k],x=dt[k],pl=p.types[k].leads;
-    return'<div class="krow">'+
-      tile(pl!==null?Math.round(pl):"--",n+" Planned Leads")+
-      tile(x.leads,n+" Leads Ran")+tile(x.sold,n+" Leads Sold")+
-      tile(fmt$(x.revenue),n+" Revenue")+
-      tile(x.leads?Math.round(x.sold/x.leads*100)+"%":"--",n+" Conv. Rate")+
-      tile(x.sold?fmt$(x.revenue/x.sold):"--",n+" Avg. Sale")+'</div>';
-  }).join("");
-  var plTotal=null;
-  typeCols().forEach(function(t){var l=p.types[t[0]].leads;if(l!==null)plTotal=(plTotal||0)+l});
-  tiles+='<div class="krow">'+
-    tile(plTotal!==null?Math.round(plTotal):"--","Total Planned Leads",1)+
-    tile(dtot.leads,"Total Leads Ran",1)+tile(dtot.sold,"Total Leads Sold",1)+
-    tile(fmt$(dtot.revenue),"Total Leads Revenue",1)+
-    tile(dtot.leads?Math.round(dtot.sold/dtot.leads*100)+"%":"--","Total Conv. Rate",1)+
-    tile(dtot.sold?fmt$(dtot.revenue/dtot.sold):"--","Total Avg. Sale",1)+'</div>';
-
-  var side='<div class="pa-side">'+
-    '<div class="pa-card"><div class="pa-duo">'+
-      '<div><b>'+clock.total+'</b><span>Workdays in the Month</span></div>'+
-      '<div><b>'+clock.elapsed+'</b><span>Workdays MTD</span></div></div></div>'+
-    '<div class="pa-pair">'+
-      '<div><div class="pa-pill">PLANNED</div><div class="pa-card pa-plan">'+
-        '<div class="pa-item"><b>'+(plannedDaily!==null?fmt$(plannedDaily):"--")+'</b><span>Planned Daily HVAC Revenue</span></div>'+
-        '<div class="pa-item"><b>'+(plan("svcCalls")!==null?plan("svcCalls"):"--")+'</b><span>Planned Service HVAC Calls for the Month</span></div>'+
-        '<div class="pa-item"><b>'+(p.revenue!==null?fmt$(p.revenue):"--")+'</b><span>Planned HVAC Revenue</span></div></div></div>'+
-      '<div><div class="pa-pill act">ACTUAL</div><div class="pa-card pa-act">'+
-        '<div class="pa-item"><b>'+fmt$(dtot.revenue)+'</b><span>Actual Daily HVAC Revenue</span></div>'+
-        '<div class="pa-item"><b>'+(svcPace!==null?svcPace:"--")+'</b><span>Actual HVAC Service Call Pace</span></div>'+
-        '<div class="pa-item"><b>'+(revPace!==null?fmt$(revPace):"--")+'</b><span>Actual HVAC Revenue Pace</span></div></div></div>'+
-    '</div></div>';
-
-  var strip='<div class="pa-card strip">'+
-    '<div><b>'+demand+'</b><span>Demand Calls Ran Today</span></div>'+
-    '<div><b>'+maintc+'</b><span>Maintenance (SPP) Calls Ran Today</span></div>'+
-    '<div><b>'+(demand+maintc)+'</b><span>Total Opportunity Calls Today</span></div></div>';
 
   // Actual MTD table
   var aRows="";
@@ -729,8 +647,6 @@ function renderSetup(){
   '</div>';
 
   document.getElementById("app").innerHTML=shell(
-    '<div class="sect">Today &middot; '+dowOf(b.today)+' '+fmtDay(b.today)+'</div>'+
-    '<div class="setup-top"><div>'+tiles+'</div>'+side+'</div>'+strip+
     '<div class="duo">'+actualTbl+expTbl+'</div>'+
     '<div class="sect">Plan Inputs &middot; tap to edit</div>'+boxes,
     "Plan edits ask for the PIN once and are shared with every viewer &middot; ROPP calls = service calls &times; ROPP rate &middot; budgeted TGLs = ROPP calls &times; turnover rate &middot; expectations prorate the plan to workdays elapsed &middot; pace = MTD &divide; workdays MTD &times; workdays in month",false);
