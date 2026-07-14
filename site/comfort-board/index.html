@@ -514,9 +514,9 @@ function renderAdvisors(){
   var b=B(),rows=day==="mtd"?b.advisors:advisorsForDay(day);
   var cols=typeCols(),mtd=day==="mtd";
   var h1='<tr><th rowspan="2" style="vertical-align:bottom">Advisor</th><th colspan="'+(mtd?7:6)+'" class="grp">Totals</th>'+
-    cols.map(function(t){return'<th colspan="3" class="grp tt-'+t[2]+'">'+t[1]+'</th>'}).join("")+'</tr>';
+    cols.map(function(t){return'<th colspan="5" class="grp tt-'+t[2]+'">'+t[1]+'</th>'}).join("")+'</tr>';
   var h2='<tr><th class="grp">Leads</th><th>Sold</th><th>Close</th><th>Revenue</th><th>Avg Sale</th><th>$/Lead</th>'+(mtd?'<th>3-Day</th>':'')+
-    cols.map(function(){return'<th class="grp">Leads</th><th>Sold</th><th>Revenue</th>'}).join("")+'</tr>';
+    cols.map(function(){return'<th class="grp">Leads</th><th>Sold</th><th>Close</th><th>Avg Sale</th><th>Revenue</th>'}).join("")+'</tr>';
   var body=rows.map(function(a,i){
     var t=a.total;
     var tr='<tr><td><span class="rankn">'+(i+1)+'</span> '+a.name+'</td>'+
@@ -527,7 +527,8 @@ function renderAdvisors(){
       (mtd?'<td>'+trendHtml(trendCalc(advisorDayRev(a.id)),a.name+" revenue/day")+'</td>':'');
     cols.forEach(function(c){
       var x=a.types[c[0]];
-      tr+='<td class="grp">'+n0(x.leads)+'</td><td>'+n0(x.sold)+'</td><td>'+fmt$0(x.revenue)+'</td>';
+      tr+='<td class="grp">'+n0(x.leads)+'</td><td>'+n0(x.sold)+'</td><td>'+pct(x.sold,x.leads)+'</td>'+
+        '<td>'+(x.sold?fmt$(x.revenue/x.sold):'<span class="dash">&mdash;</span>')+'</td><td>'+fmt$0(x.revenue)+'</td>';
     });
     return tr+'</tr>';
   }).join("");
@@ -540,7 +541,8 @@ function renderAdvisors(){
   var trow='<tr class="tot"><td>TEAM</td><td class="grp">'+tot.leads+'</td><td>'+tot.sold+'</td><td>'+pct(tot.sold,tot.leads)+'</td>'+
     '<td>'+fmt$(tot.revenue)+'</td><td>'+(tot.sold?fmt$(tot.revenue/tot.sold):"&mdash;")+'</td><td>'+(tot.leads?fmt$(tot.revenue/tot.leads):"&mdash;")+'</td>'+
     (mtd?'<td>'+trendChip("revenue","Team revenue/day")+'</td>':'')+
-    cols.map(function(c){var x=ttypes[c[0]];return'<td class="grp">'+x.leads+'</td><td>'+x.sold+'</td><td>'+fmt$0(x.revenue)+'</td>'}).join("")+'</tr>';
+    cols.map(function(c){var x=ttypes[c[0]];return'<td class="grp">'+x.leads+'</td><td>'+x.sold+'</td><td>'+pct(x.sold,x.leads)+'</td>'+
+      '<td>'+(x.sold?fmt$(x.revenue/x.sold):'<span class="dash">&mdash;</span>')+'</td><td>'+fmt$0(x.revenue)+'</td>'}).join("")+'</tr>';
   var empty='<div style="text-align:center;padding:40px;color:var(--faint);font-weight:600">No advisor activity for this day.</div>';
   var inner=rows.length?'<div class="tbl-scroll"><table class="g"><thead>'+h1+h2+'</thead><tbody>'+body+trow+'</tbody></table></div>':empty;
   document.getElementById("app").innerHTML=shell(inner,
