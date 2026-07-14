@@ -40,7 +40,13 @@ against the deck's Week-10 numbers (2026-07-05 snapshot):
   HVAC sales (CA)  completed HVAC-Sales-bucket jobs: Costco = the Costco BU
                    (regardless of job type), TGL = TGL-typed remainder,
                    Marketed = the rest; closed = a sold (non-dismissed)
-                   estimate on the job in the week
+                   estimate on the job in the week. Sold runs get auto-marked
+                   No Charge/Non-Opportunity when their project is created,
+                   so a run counts when it passes the opportunity rule OR
+                   anything was ever sold on it (estimates checked directly
+                   for candidates, since a sale can land in another week);
+                   No Charge/Non-Opp runs with nothing sold are bad leads
+                   and don't count
   plumbing         completed Drains/Service/Maintenance-bucket jobs (install
                    BU excluded per RJ's report filter); units = tankless /
                    tanked / filtration pricebook SKUs on sold estimates tied
@@ -85,7 +91,7 @@ HISTORY_FILE = os.path.join(ROOT, "data", "wow-board-history.json")
 # Bump when metric definitions change: cached weeks computed under an older
 # version are recomputed instead of served (the Actions cache would otherwise
 # keep serving frozen weeks built with the old definitions forever).
-DEFS_VER = 2
+DEFS_VER = 3
 WEEK1_FROM = dt.date(2026, 5, 1)     # the deck's Week 1: Fri 5/1 - Sun 5/3
 WEEK1_TO = dt.date(2026, 5, 3)
 FREEZE_DAYS = 10                     # closed week is final this long after its Sunday
@@ -293,6 +299,24 @@ def compute_week(company, day_from, day_to, ctx):
     ca_ran = {"tgl": 0, "costco": 0, "mkt": 0}
     ca_closed = {"tgl": 0, "costco": 0, "mkt": 0}
     fam_jobs = {"sm": [], "pl": [], "plAll": []}
+
+    # Sold sales-BU runs are auto-marked No Charge/Non-Opportunity when their
+    # project is created (the revenue moves to the install ticket), so the
+    # opportunity rule alone would drop exactly the sold calls. A run counts
+    # when it passes the rule OR anything was ever sold on it; No Charge/
+    # Non-Opp runs where nothing sold are bad leads and don't count as ran.
+    # sold_on_job only sees the week's sales, so candidates that fail both
+    # checks get their estimates looked up directly (a handful per week).
+    sales_bad_leads = set()
+    for j in jobs_done:
+        if bucket(j) != "hvac_sales" or sold_on_job.get(j["id"]) \
+                or is_opportunity(j, thresholds):
+            continue
+        ests = fetch_all(tenant, est_path, {"jobId": j["id"]}, 100, 3)
+        if not any(e.get("active")
+                   and ((e.get("status") or {}).get("name") or "") == "Sold"
+                   for e in ests):
+            sales_bad_leads.add(j["id"])
     for j in jobs_done:
         b = bucket(j)
         keys = []
@@ -307,6 +331,8 @@ def compute_week(company, day_from, day_to, ctx):
         elif b in PLUMB_ALL:
             keys = ["plAll"] + (["pl"] if b in PLUMB_SERVICE else [])
         elif b == "hvac_sales":
+            if j["id"] in sales_bad_leads:
+                continue
             # Costco is BU-scoped (a TGL-typed job in the Costco BU is Costco);
             # TGL is the TGL-typed remainder of HVAC - Sales
             name = (jt_names.get(j.get("jobTypeId")) or "").lower()
