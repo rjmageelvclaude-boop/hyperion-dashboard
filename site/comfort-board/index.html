@@ -159,6 +159,7 @@ const TYPES=[["turnover","Turnover","turn"],["marketed","Marketed","mark"],["cos
 const PLAN_FIELDS=[
   ["workdays","Budgeted work days"],
   ["svcCalls","Budgeted service calls"],
+  ["roppPct","ROPP rate % of service calls"],
   ["toRate","Planned turnover rate %"],
   ["mktLeads","Marketed leads budgeted"],
   ["costcoLeads","Costco leads budgeted"],
@@ -265,12 +266,13 @@ function dailySeries(){
 }
 // planned monthly expectations: leads x close% x avg ticket
 function planCalc(){
-  var svc=plan("svcCalls"),to=plan("toRate");
-  var leads={turnover:svc!==null&&to!==null?svc*to/100:null,
+  var svc=plan("svcCalls"),ropp=plan("roppPct"),to=plan("toRate");
+  var roppCalls=(svc!==null&&ropp!==null)?svc*ropp/100:null;
+  var leads={turnover:(roppCalls!==null&&to!==null)?roppCalls*to/100:null,
              marketed:plan("mktLeads"),costco:plan("costcoLeads"),selfgen:plan("selfLeads")};
   var close={turnover:plan("closeTurn"),marketed:plan("closeMkt"),costco:plan("closeCostco"),selfgen:plan("closeSelf")};
   var avg={turnover:plan("avgTurn"),marketed:plan("avgMkt"),costco:plan("avgCostco"),selfgen:plan("avgSelf")};
-  var out={types:{},revenue:null,sales:null};
+  var out={types:{},revenue:null,sales:null,roppCalls:roppCalls};
   TYPES.forEach(function(t){
     var k=t[0],l=leads[k],c=close[k],a=avg[k];
     var sales=(l!==null&&c!==null)?l*c/100:null;
@@ -706,12 +708,23 @@ function renderSetup(){
 
   function row(f,l){
     var v=plan(f);
-    return'<div class="row edit" onclick="editPlan(\''+f+'\',\''+l+'\')"><span>'+l+'</span><b>'+(v===null?'<span class="dash">tap to set</span>':(f.indexOf("avg")===0?fmt$(v):v+(f.indexOf("close")===0||f==="toRate"?"%":"")))+'</b></div>';
+    return'<div class="row edit" onclick="editPlan(\''+f+'\',\''+l+'\')"><span>'+l+'</span><b>'+(v===null?'<span class="dash">tap to set</span>':(f.indexOf("avg")===0?fmt$(v):v+(f.indexOf("close")===0||f==="toRate"||f==="roppPct"?"%":"")))+'</b></div>';
+  }
+  // computed (non-editable) funnel rows
+  function calcRow(l,v){
+    return'<div class="row" style="background:var(--tint)"><span>'+l+'</span><b>'+(v===null?'<span class="dash">&mdash;</span>':Math.round(v))+'</b></div>';
   }
   var boxes='<div class="setup-grid">'+
-    '<div class="setup-box"><h3>Month Basics</h3>'+row("workdays","Budgeted work days")+row("svcCalls","Budgeted service calls")+row("toRate","Planned turnover rate %")+'</div>'+
+    '<div class="setup-box"><h3>Turnover Funnel</h3>'+
+      row("workdays","Budgeted work days")+
+      row("svcCalls","Budgeted service calls")+
+      row("roppPct","ROPP rate % of service calls")+
+      calcRow("Budgeted ROPP calls on board",p.roppCalls)+
+      row("toRate","Planned turnover rate %")+
+      calcRow("Budgeted TGLs",p.types.turnover.leads)+
+      row("closeTurn","Turnover close %")+'</div>'+
     '<div class="setup-box"><h3>Budgeted Leads</h3>'+row("mktLeads","Marketed leads budgeted")+(B().hasCostco?row("costcoLeads","Costco leads budgeted"):"")+row("selfLeads","Self-gen leads budgeted")+'</div>'+
-    '<div class="setup-box"><h3>Close % by Lead Type</h3>'+row("closeTurn","Turnover close %")+row("closeMkt","Marketed close %")+(B().hasCostco?row("closeCostco","Costco close %"):"")+row("closeSelf","Self-gen close %")+'</div>'+
+    '<div class="setup-box"><h3>Close % by Lead Type</h3>'+row("closeMkt","Marketed close %")+(B().hasCostco?row("closeCostco","Costco close %"):"")+row("closeSelf","Self-gen close %")+'</div>'+
     '<div class="setup-box"><h3>Average Ticket by Lead Type</h3>'+row("avgTurn","Turnover avg ticket $")+row("avgMkt","Marketed avg ticket $")+(B().hasCostco?row("avgCostco","Costco avg ticket $"):"")+row("avgSelf","Self-gen avg ticket $")+'</div>'+
   '</div>';
 
@@ -720,7 +733,7 @@ function renderSetup(){
     '<div class="setup-top"><div>'+tiles+'</div>'+side+'</div>'+strip+
     '<div class="duo">'+actualTbl+expTbl+'</div>'+
     '<div class="sect">Plan Inputs &middot; tap to edit</div>'+boxes,
-    "Plan edits ask for the PIN once and are shared with every viewer &middot; planned turnover leads = service calls &times; turnover rate &middot; expectations prorate the plan to workdays elapsed &middot; pace = MTD &divide; workdays MTD &times; workdays in month",false);
+    "Plan edits ask for the PIN once and are shared with every viewer &middot; ROPP calls = service calls &times; ROPP rate &middot; budgeted TGLs = ROPP calls &times; turnover rate &middot; expectations prorate the plan to workdays elapsed &middot; pace = MTD &divide; workdays MTD &times; workdays in month",false);
 }
 
 function render(){
