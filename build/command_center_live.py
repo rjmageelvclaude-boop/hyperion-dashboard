@@ -29,7 +29,8 @@ Metric definitions (validated against the old report-based feed):
                         install completed in the last 90 days - installs AND the
                         return trips count in any department (service techs run
                         both at RUS/ULT and for plumbing); drywall/QA/permit/
-                        finish/startup excluded; >2 total trips = CODE PINK
+                        drive-by/startup excluded (finish jobs DO count);
+                        >2 total trips = CODE PINK
 
 CLI smoke test:
     py build/command_center_live.py sierra            # today's numbers
@@ -155,11 +156,13 @@ SVCGEN_SOURCE = HVAC_SERVICE + PLUMB_SERVICE + ELEC_SERVICE
 SVCGEN_LOOKBACK_DAYS = 30
 
 # Install callbacks: any return job at the install's location that is NOT an
-# expected follow-up (drywall patch, QA walk, permit inspection, finish/startup
-# visits). Recall/Warranty counts as a callback.
+# expected follow-up (drywall patch, QA walk, permit inspection, drive-by,
+# startup visits). Recall/Warranty counts as a callback, and so do finish jobs
+# (Plumbing Finish Job / Retro Finish) - RJ 2026-07-15: a finish trip is a
+# return we track, but a Drive By is not.
 CALLBACK_LOOKBACK_DAYS = 90
 _CALLBACK_EXEMPT = re.compile(
-    r"drywall|quality assurance|q\s*/\s*a|\bqa\b|permit|inspection|finish|start\s*up|job walk", re.I)
+    r"drywall|quality assurance|q\s*/\s*a|\bqa\b|permit|inspection|drive\s*by|start\s*up|job walk", re.I)
 
 
 def _is_system_install(bucket, jt_name):
@@ -769,7 +772,8 @@ def compute_install_callbacks(company):
     in the SAME TRADE (RJ 2026-07-14: HVAC calls only match HVAC installs,
     plumbing calls only plumbing installs - bucket prefix via _trade) at the
     same location created AFTER the install completed - excluding expected
-    follow-ups (_CALLBACK_EXEMPT: drywall/QA/permit/finish/startup), canceled
+    follow-ups (_CALLBACK_EXEMPT: drywall/QA/permit/drive-by/startup; finish
+    jobs like Plumbing Finish Job / Retro Finish DO count), canceled
     jobs, sales-BU estimate visits (a recall booked in the sales BU still
     counts), and other installs (a new purchase isn't a callback).
     Listed rows are return trips with an appointment TODAY, sorted by when the
