@@ -464,15 +464,22 @@ function renderTrends(){
       return rows?'<div style="font-weight:700;margin-bottom:3px">'+monthName+' '+day+'</div>'+rows:null;
     }}):'<div style="color:#94a3b8;font-size:12px;padding:20px 0">Set a Monthly Budget (or Daily Revenue Budget) in Budgets to draw this chart.</div>';
 
-  // Per-company cards: cumulative $ vs the budget & plan pace lines
+  // Per-company cards: same pace view as the combined chart - cumulative
+  // revenue as % of budget pace (solid) and % of plan pace (dashed), day by
+  // day against the 100% line, so each company reads exactly like the top chart.
   var cards="";
   for(var k in CO)(function(k){
     var p=P[k],cc=CO[k];
     var last=p.ser.length?p.ser[p.ser.length-1]:null;
+    var ptsB=[],ptsP=[],coMax=0;
+    p.ser.forEach(function(e){
+      var bP=cumPace(k,ty,tm,e.day,p.budget,p.bd),pP=cumPace(k,ty,tm,e.day,p.plan,p.bd);
+      if(bP>0){var v1=e.cum/bP*100;ptsB.push({x:e.day,y:v1});if(v1>coMax)coMax=v1}
+      if(pP>0){var v2=e.cum/pP*100;ptsP.push({x:e.day,y:v2});if(v2>coMax)coMax=v2}
+    });
     var lns=[];
-    if(p.budget>0){var bp=[];for(var d2=1;d2<=dim;d2++)bp.push({x:d2,y:cumPace(k,ty,tm,d2,p.budget,p.bd)});lns.push({pts:bp,color:"#94a3b8",w:1.5,dash:"6,4"})}
-    if(p.plan>0){var pl=[];for(var d3=1;d3<=dim;d3++)pl.push({x:d3,y:cumPace(k,ty,tm,d3,p.plan,p.bd)});lns.push({pts:pl,color:"#64748b",w:1.5,dash:"2,3"})}
-    if(p.ser.length)lns.push({pts:p.ser.map(function(e){return{x:e.day,y:e.cum}}),color:cc.color,w:2,endDot:true});
+    if(ptsP.length)lns.push({pts:ptsP,color:cc.color,w:2,dash:"5,4"});
+    if(ptsB.length)lns.push({pts:ptsB,color:cc.color,w:2,endDot:true});
     var stats="";
     if(last){
       var bPace=cumPace(k,ty,tm,last.day,p.budget,p.bd),plPace=cumPace(k,ty,tm,last.day,p.plan,p.bd);
@@ -484,22 +491,23 @@ function renderTrends(){
     if(tr)trHtml='<div style="text-align:right;flex-shrink:0" title="Average daily revenue: $'+Math.round(tr.lastAvg).toLocaleString()+'/day over the last 5 weekdays vs $'+Math.round(tr.prevAvg).toLocaleString()+'/day the 5 before">'
       +arrowGlyph(tr.dir,"dailyRevenue")+' <span style="font-size:12px;font-weight:800;color:'+(tr.dir>0?"#16a34a":tr.dir<0?"#ef4444":"#64748b")+'">'+(tr.pct>=0?"+":"")+tr.pct.toFixed(0)+'%</span>'
       +'<div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase">daily rev wk/wk</div></div>';
-    var legend='<div class="chart-legend"><span><svg width="18" height="4" style="overflow:visible"><line x1="0" x2="18" y1="2" y2="2" stroke="'+cc.color+'" stroke-width="2.5"/></svg>Actual MTD</span>'
-      +(p.budget>0?'<span><svg width="18" height="4" style="overflow:visible"><line x1="0" x2="18" y1="2" y2="2" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6,4"/></svg>Budget '+moneyShort(p.budget)+'</span>':'')
-      +(p.plan>0?'<span><svg width="18" height="4" style="overflow:visible"><line x1="0" x2="18" y1="2" y2="2" stroke="#64748b" stroke-width="2" stroke-dasharray="2,3"/></svg>Plan '+moneyShort(p.plan)+'</span>':'')
-      +'</div>';
+    var legend='<div class="chart-legend">'
+      +(ptsB.length?'<span><svg width="18" height="4" style="overflow:visible"><line x1="0" x2="18" y1="2" y2="2" stroke="'+cc.color+'" stroke-width="2.5"/></svg>% of Budget pace ('+moneyShort(p.budget)+'/mo)</span>':'')
+      +(ptsP.length?'<span><svg width="18" height="4" style="overflow:visible"><line x1="0" x2="18" y1="2" y2="2" stroke="'+cc.color+'" stroke-width="2" stroke-dasharray="5,4"/></svg>% of Plan pace ('+moneyShort(p.plan)+'/mo)</span>':'')
+      +'<span style="color:#94a3b8"><svg width="20" height="4" style="overflow:visible"><line x1="0" x2="20" y1="2" y2="2" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="5,4"/></svg>100% = on pace</span></div>';
     var body;
-    if(!lns.length)body='<div style="color:#94a3b8;font-size:12px;padding:20px 0">No revenue data yet this month — and no budget or plan set.</div>';
-    else body=legend+lineChart({id:"tr-"+k,h:195,dim:dim,maxDay:dim,
-      yMax:(Math.max(p.budget,p.plan,last?last.cum:0)*1.06)||1,yFmt:moneyShort,lines:lns,
+    if(!lns.length)body='<div style="color:#94a3b8;font-size:12px;padding:20px 0">'+(p.ser.length?'Set a Monthly Budget or Plan in Budgets to chart pace.':'No revenue data yet this month.')+'</div>';
+    else body=legend+lineChart({id:"tr-"+k,h:195,dim:dim,maxDay:last?last.day:dim,
+      yMax:Math.max(140,Math.ceil((coMax+15)/20)*20),yFmt:function(v){return Math.round(v)+"%"},
+      refY:100,refLabel:"ON PACE",lines:lns,
       tip:function(day){
         var e=null;p.ser.forEach(function(x){if(x.day===day)e=x});
+        if(!e)return null;
         var bP=cumPace(k,ty,tm,day,p.budget,p.bd),pP=cumPace(k,ty,tm,day,p.plan,p.bd);
-        if(!e&&!(bP>0)&&!(pP>0))return null;
-        var h2='<div style="font-weight:700;margin-bottom:3px">'+monthName+' '+day+(e?'':' · target')+'</div>';
-        if(e)h2+='<div>Day revenue <b>$'+Math.round(e.rev).toLocaleString()+'</b></div><div>MTD <b>$'+Math.round(e.cum).toLocaleString()+'</b></div>';
-        if(bP>0)h2+='<div style="color:#cbd5e1">Budget pace $'+Math.round(bP).toLocaleString()+'</div>';
-        if(pP>0)h2+='<div style="color:#cbd5e1">Plan pace $'+Math.round(pP).toLocaleString()+'</div>';
+        var h2='<div style="font-weight:700;margin-bottom:3px">'+monthName+' '+day+'</div>'
+          +'<div>Day revenue <b>$'+Math.round(e.rev).toLocaleString()+'</b></div><div>MTD <b>$'+Math.round(e.cum).toLocaleString()+'</b></div>';
+        if(bP>0)h2+='<div>Budget pace <b>'+Math.round(e.cum/bP*100)+'%</b><span style="color:#cbd5e1"> · target $'+Math.round(bP).toLocaleString()+'</span></div>';
+        if(pP>0)h2+='<div>Plan pace <b>'+Math.round(e.cum/pP*100)+'%</b><span style="color:#cbd5e1"> · target $'+Math.round(pP).toLocaleString()+'</span></div>';
         return h2;
       }});
     cards+='<div class="chart-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div class="chart-title" style="display:flex;align-items:center;gap:8px"><span style="width:4px;height:16px;border-radius:2px;background:'+cc.color+';display:inline-block"></span>'+cc.short+'</div><div class="trend-stats">'+stats+'</div></div>'+trHtml+'</div>'+body+'</div>';
