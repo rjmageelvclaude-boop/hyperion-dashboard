@@ -38,6 +38,10 @@ Metric definitions (validated against the old report-based feed):
                         both at RUS/ULT and for plumbing); drywall/QA/permit/
                         drive-by/startup excluded (finish jobs DO count);
                         >2 total trips = CODE PINK
+  - memb conversion   = non-member jobs where a membership was sold / non-member
+                        jobs, over service jobs COMPLETED that local day (ST
+                        completion-date basis, not the appointment board);
+                        options-per-opp shares the same completed-jobs set
 
 CLI smoke test:
     py build/command_center_live.py sierra            # today's numbers
@@ -566,8 +570,8 @@ def compute_day(company, day, jt_names=None):
         lambda j: live(j) and inst(j, "plumb_install") and same_day(j))
     m["elecInstallsSameDay"] = count(
         lambda j: live(j) and inst(j, "elec_install") and same_day(j))
-    m["sameDayDef"] = 6  # history recompute marker - v6: daily revenue on the
-    # ST completed-jobs basis instead of invoice date (2026-07-16)
+    m["sameDayDef"] = 7  # history recompute marker - v7: membership conversion
+    # / options-per-opp on the completed-jobs basis too (2026-07-16)
 
     # an estimate can be sold today on an older sales job that never touched
     # today's board - classify those turnover-or-marketed too
@@ -707,7 +711,7 @@ def compute_day(company, day, jt_names=None):
                    if j.get("customerId") and live(j)}
     memb = {"hvac": 0, "plumb": 0, "elec": 0}
     office = {"hvac": 0, "plumb": 0, "elec": 0}
-    memb_custs_today = set()  # board customers who bought a membership today
+    memb_custs_today = set()  # every customer who bought a membership today
     for mb in fetch_all(tenant, "/memberships/v2/tenant/{tenant}/memberships",
                         {"createdOnOrAfter": start, "createdBefore": end},
                         page_size=200):
@@ -715,9 +719,10 @@ def compute_day(company, day, jt_names=None):
         trade = ("plumb" if pre.startswith("plumb")
                  else "elec" if pre.startswith(("elec", "excav")) else "hvac")
         cid = mb.get("customerId")
+        if cid:
+            memb_custs_today.add(cid)
         if cid in board_custs:
             memb[trade] += 1
-            memb_custs_today.add(cid)
         else:
             office[trade] += 1
     m["hvacMembershipsSold"] = memb["hvac"]
@@ -729,7 +734,11 @@ def compute_day(company, day, jt_names=None):
     m["officeMembershipsSold"] = sum(office.values())
 
     # -- options per opportunity + membership conversion / offer rate for the
-    # two service trades (RJ 2026-07-14). Opportunity = the call-board formula
+    # two service trades (RJ 2026-07-14). Jobs COMPLETED this local day,
+    # whatever day the appointment was booked (RJ 2026-07-16: switched from
+    # the appointment board to match ST's completion-date basis - an
+    # after-midnight completion belongs to the day it completed, same call as
+    # daily revenue). Opportunity = the call-board formula
     # (not noCharge, or job total >= the job type's soldThreshold). Options =
     # estimates CREATED today on opportunity jobs completed today (a dismissed
     # estimate was still presented). Non-member = the job's customer had no
@@ -761,7 +770,7 @@ def compute_day(company, day, jt_names=None):
         return any(_is_memb_sku(company, (it.get("sku") or {}).get("name"))
                    for it in (e.get("items") or []))
 
-    svc_done = {t: [j for j in board if j["_bucket"] in bks and ran(j)]
+    svc_done = {t: [j for j in completed_jobs if j["_bucket"] in bks]
                 for t, bks in (("hvac", HVAC_SERVICE), ("plumb", PLUMB_SERVICE))}
     memberships = _memberships_for_customers(
         tenant, {j["customerId"] for js in svc_done.values() for j in js
@@ -1011,12 +1020,14 @@ def read_history():
 def compute_history(progress=None):
     """Past-weekday metrics per company, cached on disk (past days never change).
 
-    Entries missing sameDayDef=6 predate the current metric definitions (v2:
+    Entries missing sameDayDef=7 predate the current metric definitions (v2:
     sold-today same-day installs; v3: memberships sold from the memberships
     endpoint with the office/non-job split; v4: ROPP excludes Management
     Removed ROPP - all 2026-07-15; v5: TGL set requires the generating job
     to be Completed, same day; v6: daily revenue = invoices of jobs COMPLETED
-    that local day, matching the ST dashboard's Completed Revenue, 2026-07-16)
+    that local day, matching the ST dashboard's Completed Revenue; v7:
+    membership conversion / options-per-opp also on the completed-jobs basis
+    instead of the appointment board - both 2026-07-16)
     and are recomputed once so the sparklines don't mix definitions.
     """
     cache = _load_json(HISTORY_FILE, {})
@@ -1024,7 +1035,7 @@ def compute_history(progress=None):
     for company, co in COMPANIES.items():
         jt = None
         entries = {e["date"]: e for e in cache.get(company, [])
-                   if e.get("sameDayDef") == 6}
+                   if e.get("sameDayDef") == 7}
         result = []
         for day in _history_days(co["tz"]):
             key = day.isoformat()
