@@ -221,11 +221,13 @@ function repsHtml(jobs) {
       <tbody>
       ${rows.map(r => `<tr class="click ${repFilter === r.id ? "sel" : ""}" onclick="pickRep(${r.id})">
         <td class="l">${r.name}</td><td>${r.n}</td><td>${fmt(r.sold)}</td>
-        <td>${pct(r.discPct)}</td><td>${fmt(r.expected)}</td><td>${fmt(r.paid + r.adj)}</td>
+        <td>${pct(r.discPct)}</td><td>${fmt(r.expected)}</td>
+        <td>${fmt(r.paid + r.adj)} <span style="color:#9aa1ab">(${pct(r.effRate)})</span></td>
         <td class="${r.variance > r.n ? "red" : "green"}">${money2(r.variance)}</td>
         <td>${r.over || "—"}</td></tr>`).join("")}
       <tr class="tot"><td class="l">DEPARTMENT</td><td>${S.n}</td><td>${fmt(S.sold)}</td>
-        <td>${pct(S.discPct)}</td><td>${fmt(S.expected)}</td><td>${fmt(S.paid + S.adj)}</td>
+        <td>${pct(S.discPct)}</td><td>${fmt(S.expected)}</td>
+        <td>${fmt(S.paid + S.adj)} <span style="color:#9aa1ab">(${pct(S.effRate)})</span></td>
         <td class="${S.variance > S.n ? "red" : "green"}">${money2(S.variance)}</td>
         <td>${S.over}</td></tr>
       </tbody></table></div>
@@ -246,12 +248,13 @@ const COLS = [
   ["type","Job Type","l"],["book","Book",""],["sold","Sold",""],
   ["discPct","Disc %",""],["codes","Codes/Credits",""],["manip","Price Cut",""],
   ["expRate","Plan Rate",""],["expected","Plan $",""],["paid","Paid",""],
-  ["adj","Adj",""],["variance","Variance",""],["flags","Flags","l"]];
+  ["adj","Adj",""],["eff","Paid %",""],["variance","Variance",""],["flags","Flags","l"]];
 
 function jobsHtml(jobs) {
   const q = query.toLowerCase();
   let rows = jobs.map(j => ({...j, manip: Math.max(0, j.book - j.list),
-                             codes: j.discLines + (j.writeOff || 0)}));
+                             codes: j.discLines + (j.writeOff || 0),
+                             eff: j.sold > 0 ? (j.paid + j.adj) / j.sold : 0}));
   if (repFilter) rows = rows.filter(j => j.repId === repFilter ||
     (j.reps || []).some(r => r.id === repFilter));
   if (q) rows = rows.filter(j =>
@@ -284,6 +287,7 @@ function jobsHtml(jobs) {
         <td class="${j.manip > 50 ? "red" : ""}">${j.manip > 0.5 ? fmt(j.manip) : "—"}</td>
         <td>${pct(j.expRate, 0)}</td><td>${fmt(j.expected)}</td>
         <td>${fmt(j.paid)}</td><td class="${j.adj < 0 ? "green" : ""}">${j.adj ? fmt(j.adj) : "—"}</td>
+        <td class="${j.eff > j.expRate + .001 ? "red" : j.eff < j.expRate - .001 ? "green" : ""}"><b>${pct(j.eff)}</b></td>
         <td class="${j.variance > 1 ? "red" : j.variance < -1 ? "green" : ""}"><b>${money2(j.variance)}</b></td>
         <td class="l">${j.flags.map(f => { const [t, c] = FLAG_LABEL[f] || [f, "other"];
           return `<span class="fl ${c}">${t}</span>`; }).join("")}</td>
@@ -292,6 +296,7 @@ function jobsHtml(jobs) {
         <td>${fmt(S.book)}</td><td>${fmt(S.sold)}</td><td>${pct(S.discPct)}</td>
         <td>${fmt(S.discLines)}</td><td>${fmt(S.manip)}</td><td>${pct(S.expRate, 2)}</td>
         <td>${fmt(S.expected)}</td><td>${fmt(S.paid)}</td><td>${fmt(S.adj)}</td>
+        <td>${pct(S.effRate, 2)}</td>
         <td class="${S.variance > S.n ? "red" : "green"}">${money2(S.variance)}</td><td></td></tr>
       </tbody></table></div>
   </div>`;
@@ -347,13 +352,14 @@ function buildPeriods() {
 
 function exportCsv() {
   const jobs = winJobs().map(j => ({...j, manip: Math.max(0, j.book - j.list),
-                                    codes: j.discLines + (j.writeOff || 0)}));
+                                    codes: j.discLines + (j.writeOff || 0),
+                                    eff: j.sold > 0 ? (j.paid + j.adj) / j.sold : 0}));
   const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [COLS.map(([,l]) => esc(l)).join(",") + ",Discount Codes"];
   for (const j of jobs) {
     lines.push(COLS.map(([k]) => {
       if (k === "flags") return esc(j.flags.join(" "));
-      if (k === "discPct" || k === "expRate") return (j[k]*100).toFixed(2) + "%";
+      if (k === "discPct" || k === "expRate" || k === "eff") return (j[k]*100).toFixed(2) + "%";
       return typeof j[k] === "number" ? j[k] : esc(j[k]);
     }).join(",") + "," + esc(j.discNames.join("; ")));
   }
