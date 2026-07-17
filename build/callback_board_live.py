@@ -71,7 +71,7 @@ from command_center_live import (fetch_all, local_today, _load_json,
 from tech_board_live import month_window_utc
 
 HISTORY_FILE = os.path.join(ROOT, "data", "callback-board-history.json")
-CACHE_V = 4                  # bump when classification/schema changes
+CACHE_V = 5                  # bump when classification/schema changes
 WINDOW_CLOSED_MONTHS = 18    # cohort months kept besides the current month
 MONTH_FREEZE_DAYS = 40       # month is final this long after month-end
 MONTH_RECHECK_HOURS = 24     # until frozen, closed months refresh at most daily
@@ -233,6 +233,22 @@ def _day(ts):
     return ts[:10] if ts else None
 
 
+def _estimate_job_ids(tenant, start, end):
+    """Jobs that got an estimate created in the window - the tech quoted
+    something on the visit, so it was a sales opportunity, not a callback.
+    Fails open (empty set) so an estimates outage doesn't kill the month."""
+    ids = set()
+    try:
+        for e in fetch_all(tenant, "/sales/v2/tenant/{tenant}/estimates",
+                           {"createdOnOrAfter": start, "createdBefore": end},
+                           page_size=500, max_pages=400):
+            if e.get("jobId"):
+                ids.add(e["jobId"])
+    except Exception as exc:
+        print(f"WARNING: {tenant} estimates fetch failed ({exc})", flush=True)
+    return ids
+
+
 def _parse(day):
     return dt.date(int(day[:4]), int(day[5:7]), int(day[8:10]))
 
@@ -287,6 +303,7 @@ def month_events(company, year, month, idx):
     # but this endpoint ignores other filters - don't trust it blindly.
     jobs = [j for j in jobs if j.get("jobStatus") == "Completed"]
     jobs.sort(key=lambda j: j.get("completedOn") or "")
+    quoted = _estimate_job_ids(tenant, start, end)
 
     # pass 1: cohort installs into the index, so same-month callbacks link
     installs, appt_of_inst = [], {}
@@ -323,6 +340,11 @@ def month_events(company, year, month, idx):
 
         ref = _day(j.get("createdOn")) or _day(j.get("completedOn"))
         d = _day(j.get("completedOn"))
+        # RJ 2026-07-16: a callback is a trip we ate the cost on. If the
+        # visit billed revenue (we quoted / sold repairs), it's normal
+        # service business - not a callback. Recall-TYPED jobs are exempt
+        # (explicitly booked as recalls, sometimes with billable warranty).
+        free = float(j.get("total") or 0) == 0 or bool(j.get("noCharge"))
         if cat in ("recall", "part"):
             orig = _link(idx, j.get("recallForId"), j.get("projectId"),
                          j.get("locationId"), ref, grace_days=3)
@@ -330,8 +352,15 @@ def month_events(company, year, month, idx):
             # warranty stays workload); other BUs / part jobs need a link
             if orig is None and not (cat == "recall" and jbu == bu):
                 continue
+            if cat == "part" and not free and not RE_RECALL.search(
+                    RE_TAGS.sub(" ", j.get("summary") or "")):
+                continue                  # sold part/accessory install
             bucket = "recall"
         else:                             # neutral -> service-return candidate
+            if not free:
+                continue                  # billed visit = sold work, not ours
+            if j["id"] in quoted:
+                continue                  # tech quoted work = opportunity call
             if RE_TRADE_BU.search(bus.get(jbu) or ""):
                 continue                  # other-trade demand work, not ours
             orig = _link(idx, None, j.get("projectId"), j.get("locationId"),
