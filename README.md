@@ -11,6 +11,7 @@ https://rjmageelvclaude-boop.github.io/intermountain-dashboards/
 | Command Center | `/command-center/` | Daily ops: revenue, sales, board counts, calls, TGLs, plumbing, MTD pacing (access-code gate) |
 | 4 Day Call Board | `/call-board/` | Rotating live capacity boards for the next four days |
 | Comfort Advisors | `/ca-board/` | CA leaderboards MTD/YTD + GOAT trip pacing |
+| Commission Audit — CAs | `/ca-pay-board/` | CA commission paid vs pay plan, job by job, by pay period/MTD/YTD (access-code gate) |
 | Tech Leaderboard | `/tech-board/` | HVAC service tech KPIs MTD/YTD |
 | Plumber Leaderboard | `/plumb-board/` | Sierra + Ultimate plumber KPIs MTD/YTD |
 | CSR Board | `/csr-board/` | Call-center KPIs Daily/MTD/YTD |
