@@ -933,6 +933,24 @@ async function gate(){
     alert("Wrong access code.");
   }
 }
+// ── deploy watcher: open viewers re-fetch this page every few minutes; any
+// push reloads them, and a changed access code kicks them back to the prompt ──
+(function(){
+  var baseline=null;
+  function pageHash(t){var m=t.match(/ACCESS_HASH\s*=\s*"([0-9a-f]{64})"/);return m?m[1]:null}
+  async function checkDeploy(){
+    try{
+      var r=await fetch("index.html?ts="+Date.now(),{cache:"no-store"});
+      if(!r.ok)return;
+      var t=await r.text();
+      if(baseline===null){baseline=t;return}
+      if(t===baseline)return;
+      if(pageHash(t)!==ACCESS_HASH)sessionStorage.removeItem(ACCESS_KEY);
+      location.reload();
+    }catch(e){}
+  }
+  checkDeploy();setInterval(checkDeploy,5*60*1000);
+})();
 gate().then(function(){refresh()});
 setInterval(function(){if(!viewDate)refresh()},10*60*1000); // keep today's view fresh
 </script>
