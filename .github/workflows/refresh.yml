@@ -100,6 +100,7 @@ jobs:
             site/gm-board/data.json
             site/comfort-board/data.json
             site/callback-board/data.json
+            site/plumb-callback-board/data.json
           key: reports-${{ github.run_id }}
           restore-keys: reports-
 
@@ -137,6 +138,8 @@ jobs:
           # (months now also fetch crew assignments + appointment hours);
           # steady state only recomputes the current month + open callbacks.
           CALLBACK_BOARD_BUDGET: "300"
+          # Plumbing sibling: 3 tenants x 19 months, same mechanics.
+          PLUMB_CALLBACK_BOARD_BUDGET: "240"
           # Customer privacy: names ship only as an AES-256-GCM blob under
           # this passphrase, unlocked in the browser by the viewer;
           # unset -> the board publishes without customer names.
@@ -151,7 +154,7 @@ jobs:
 
           # Boards staggered a touch so eight processes don't hit the auth
           # server in the same instant.
-          for board in command_center call_board ca_board comfort_board tech_board plumb_board csr_board install_board silo_board wow_board member_board gm_board callback_board; do
+          for board in command_center call_board ca_board comfort_board tech_board plumb_board csr_board install_board silo_board wow_board member_board gm_board callback_board plumb_callback_board; do
             python "build/${board}_refresh.py" > "logs/${board}.log" 2>&1 \
               || echo "${board} refresh failed - deploying cached data.json" >> "logs/${board}.log" &
             sleep 2
@@ -208,6 +211,7 @@ jobs:
             site/gm-board/data.json
             site/comfort-board/data.json
             site/callback-board/data.json
+            site/plumb-callback-board/data.json
           key: reports-${{ github.run_id }}
 
       - name: Upload site
