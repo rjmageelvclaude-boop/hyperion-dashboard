@@ -19,7 +19,9 @@ the pay plan says it should have been, job by job:
                          contains "Costco"      -> 7%
                          contains "TGL"/"LTO"   -> 8%   (tech-generated lead)
                          anything else          -> 10%  (straight Sierra)
-                         Goodman equipment      -> flat 5%, no ladder
+                         Goodman equipment      -> flat 5%, no ladder, for
+                                                   commissions paid before
+                                                   GOODMAN_RETIRED_ON only
                        ...then dinged by the total discount % off book price
                        (whole points, per the policy):
                          0-5%         no hit
@@ -72,8 +74,15 @@ CA_TEAM = "1ca"              # technicians team, case-insensitive
 
 # ---- the pay plan ("Comfort Advisor Pay Policy" PDF, applied 2026-07-17) ---
 # Rates by sales category; Goodman is equipment-based (detected from the
-# invoice items - job types don't say Goodman) and pays a flat 5% with no
+# invoice items - job types don't say Goodman) and paid a flat 5% with no
 # discount ladder, since 5% is also the ladder's floor.
+#
+# RETIRED (RJ, 2026-07-17): Goodman now pays the same as everything else.
+# Commissions paid before this date keep the flat 5% (payroll's own cutover,
+# verified in the data: last flat-5 Goodman paid 7/9, first lead-source-rate
+# Goodman paid 7/10); from this date on, Goodman jobs rate by lead source
+# with the normal discount ladder.
+GOODMAN_RETIRED_ON = "2026-07-10"
 BASE_RATES = {"Costco": 0.07, "TGL": 0.08, "Marketed": 0.10, "Goodman": 0.05}
 # Discounting rules, in the policy's whole percentage points:
 # 0-5% no effect | 6-8% -1pt | 9% -2pts | 10%+ flat OVER_CAP_RATE.
@@ -371,9 +380,13 @@ def build_rows(items, roster, jt_names, inv_store, log=print):
         invs = by_job.get(str(jid), {})
         p = price_job(invs, prices)
         bucket = _bucket(jt)
-        # Goodman sales pay their own flat rate regardless of lead source -
-        # it's an equipment attribute, so detect it from what was billed
-        if bucket != "Costco" and p["goodman"] > 0.5 * max(p["list"], 1):
+        # Goodman sales paid their own flat rate regardless of lead source -
+        # an equipment attribute, detected from what was billed - until the
+        # rate was retired; the gate is the commission pay date, matching
+        # how payroll itself cut over
+        pay_date = min(r["commDates"] or r["adjDates"])
+        if (pay_date < GOODMAN_RETIRED_ON and bucket != "Costco"
+                and p["goodman"] > 0.5 * max(p["list"], 1)):
             bucket = "Goodman"
 
         paid = sum(r["paidBy"].values())
