@@ -760,7 +760,7 @@ function render(){
 
   // Turnover-model companies (Brothers): the tgl* keys carry turnovers -
   // sales-BU jobs created after a service/maintenance visit at the location.
-  var tglN=co.turnover?"Turnovers":"TGLs / Silo";
+  var tglN=co.turnover?"Turnovers":"TGLs";
   var tB=mrow("ROPPs on Board",g("hvacRoppsOnBoard"),"#",roppBgt,"hvacRoppsOnBoard")+mrow("ROPPs Ran",g("hvacRoppsRan"),"#",undefined,"hvacRoppsRan")+mrow(tglN+" Set",g("tglsSet"),"#",undefined,"tglsSet")+mrow(tglN+" Set Same Day",g("tglsSetSameDay"),"#",undefined,"tglsSetSameDay")+mrow(tglN+" Canceled",g("tglsCanceled"),"#",undefined,"tglsCanceled")+mrow("Flip Rate",flipRate,"%",undefined,null,flipLow?"flash-red":"");
 
   var canB=mrow("HVAC Service & Maintenance",g("hvacSMCanceled"),"#",undefined,"hvacSMCanceled")+mrow("HVAC Sales",g("hvacSalesCanceled"),"#",undefined,"hvacSalesCanceled");
@@ -770,7 +770,7 @@ function render(){
 
   var hB=mrow("Maintenance on Board",g("hvacMaintenanceOnBoard"),"#",undefined,"hvacMaintenanceOnBoard")+mrow("Maintenance Ran",g("hvacMaintenanceRan"),"#",undefined,"hvacMaintenanceRan")+mrow("Demand on Board",g("hvacDemandOnBoard"),"#",undefined,"hvacDemandOnBoard")+mrow("Demand Ran",g("hvacDemandRan"),"#",undefined,"hvacDemandRan")+mrow("Total Revenue",g("hvacServiceRevenue"),"$",undefined,"hvacServiceRevenue")+mrow("Total Sales",g("hvacServiceSales"),"$",undefined,"hvacServiceSales")+mrow("Average Ticket",hvacAvg,"$",undefined,null)+mrow("Options per Opp",g("hvacOptionsPerOpp"),"x",undefined,"hvacOptionsPerOpp")+mrow("Memberships Sold",g("hvacMembershipsSold"),"#",undefined,"hvacMembershipsSold")+mrow("Membership Conversion",g("hvacMembConversion"),"%",undefined,"hvacMembConversion")+mrow("Membership Offer Rate",g("hvacMembOfferRate"),"%",undefined,"hvacMembOfferRate");
 
-  var sB=subh(co.turnover?"Service-Generated Sales":"TGL / Silo Sales",g("tglTotalSales"),c)+mrow("Total Sales",g("tglTotalSales"),"$",undefined,"tglTotalSales")+mrow("Leads Ran",g("tglLeadsRan"),"#",undefined,"tglLeadsRan")+mrow("Leads Sold",g("tglLeadsSold"),"#",undefined,"tglLeadsSold")+mrow("Conversion Rate",g("tglConversion"),"%",undefined,null)+mrow("Average Ticket",g("tglAvgTicket"),"$",undefined,null);
+  var sB=subh(co.turnover?"Service-Generated Sales":"TGL Sales",g("tglTotalSales"),c)+mrow("Total Sales",g("tglTotalSales"),"$",undefined,"tglTotalSales")+mrow("Leads Ran",g("tglLeadsRan"),"#",undefined,"tglLeadsRan")+mrow("Leads Sold",g("tglLeadsSold"),"#",undefined,"tglLeadsSold")+mrow("Conversion Rate",g("tglConversion"),"%",undefined,null)+mrow("Average Ticket",g("tglAvgTicket"),"$",undefined,null);
   sB+=subh("Marketing Sales",g("mktTotalSales"),c)+mrow("Total Sales",g("mktTotalSales"),"$",undefined,"mktTotalSales")+mrow("Leads Ran",g("mktLeadsRan"),"#",undefined,"mktLeadsRan")+mrow("Leads Sold",g("mktLeadsSold"),"#",undefined,"mktLeadsSold")+mrow("Conversion Rate",g("mktConversion"),"%",undefined,null)+mrow("Average Ticket",g("mktAvgTicket"),"$",undefined,null);
   if(co.costco){sB+=subh("Costco Sales",g("costcoTotalSales"),c)+mrow("Total Sales",g("costcoTotalSales"),"$",undefined,"costcoTotalSales")+mrow("Leads Ran",g("costcoLeadsRan"),"#",undefined,"costcoLeadsRan")+mrow("Leads Sold",g("costcoLeadsSold"),"#",undefined,"costcoLeadsSold")+mrow("Conversion Rate",g("costcoConversion"),"%",undefined,null)+mrow("Average Ticket",g("costcoAvgTicket"),"$",undefined,null)}
 
@@ -862,7 +862,7 @@ function render(){
   }
   if(flipAlarm){
     overlays+=bigAlert(false,"CHECK IN ON FLIPS ASAP!!","OBJECTIVE 1 AND OBJECTIVE 2 ARE NOT BEING MET!!",
-      co.short+" · Flip rate "+flipRate.toFixed(1)+"% — "+g("tglsSet")+" "+(co.turnover?"turnovers":"TGLs / Silo")+" set on "+g("hvacRoppsRan")+" ROPPs ran",null,"clearFlipAlarm()");
+      co.short+" · Flip rate "+flipRate.toFixed(1)+"% — "+g("tglsSet")+" "+(co.turnover?"turnovers":"TGLs")+" set on "+g("hvacRoppsRan")+" ROPPs ran",null,"clearFlipAlarm()");
   }
   if(cancelAlarm){
     var jobLines=(cancelJobs||[]).map(function(r){return"#"+r.jobNumber+" · "+r.type}).join("<br>");
