@@ -18,7 +18,7 @@ https://rjmageelvclaude-boop.github.io/intermountain-dashboards/
 | Install Leaderboard | `/install-board/` | Install crew KPIs MTD/YTD |
 | Silo Leaderboard | `/silo-board/` | Silo lead-gen tech KPIs MTD/YTD |
 | GOAT Board | `/goat-board/` | All-department 2026 incentive-trip tracker |
-| Install Callbacks | `/callback-board/` | HVAC install callback cohorts (30/60/90/180-day rates) |
+| Install Callbacks — HVAC | `/callback-board/` | HVAC install callback cohorts (30/60/90/180-day rates) |
 | Install Callbacks — Plumbing | `/plumb-callback-board/` | Plumbing install callback cohorts, same methodology |
 
 ## How it works
