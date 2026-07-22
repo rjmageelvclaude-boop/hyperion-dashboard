@@ -66,6 +66,8 @@ CONFIG_CACHE = os.path.join(DATA_DIR, "command-center-st-config.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "command-center-history.json")
 HISTORY_WEEKDAYS = 20          # history depth in business days (weekends inside the span cached too)
 CONFIG_TTL_HOURS = 24 * 7      # job-type list cache
+DEFS_VER = 8                   # metric-definition version stamped on cached history entries
+                               # (see compute_history docstring for the changelog)
 
 COMPANIES = {
     "sierra": {
@@ -591,8 +593,8 @@ def compute_day(company, day, jt_names=None):
         lambda j: live(j) and inst(j, "plumb_install") and same_day(j))
     m["elecInstallsSameDay"] = count(
         lambda j: live(j) and inst(j, "elec_install") and same_day(j))
-    m["sameDayDef"] = 8  # history recompute marker - v8: canceled-call job
-    # lists with cancel times for the dropdown drill-downs (2026-07-20)
+    m["sameDayDef"] = DEFS_VER  # history recompute marker - v8: canceled-call
+    # job lists with cancel times for the dropdown drill-downs (2026-07-20)
 
     # an estimate can be sold today on an older sales job that never touched
     # today's board - classify those turnover-or-marketed too
@@ -1048,7 +1050,7 @@ def compute_history(progress=None):
     """Past-day metrics per company (weekends included), cached on disk
     (past days never change).
 
-    Entries missing sameDayDef=8 predate the current metric definitions (v2:
+    Entries missing sameDayDef=DEFS_VER predate the current metric definitions (v2:
     sold-today same-day installs; v3: memberships sold from the memberships
     endpoint with the office/non-job split; v4: ROPP excludes Management
     Removed ROPP - all 2026-07-15; v5: TGL set requires the generating job
@@ -1064,7 +1066,7 @@ def compute_history(progress=None):
     for company, co in COMPANIES.items():
         jt = None
         entries = {e["date"]: e for e in cache.get(company, [])
-                   if e.get("sameDayDef") == 7}
+                   if e.get("sameDayDef") == DEFS_VER}
         result = []
         for day in _history_days(co["tz"]):
             key = day.isoformat()
