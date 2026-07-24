@@ -747,6 +747,10 @@ function render(){
   var plumbRan=g("plumbMaintenanceRan")+g("plumbDemandRan");
   var plumbAvg=plumbRan>0?g("plumbRevenue")/plumbRan:0;
   var totalHS=g("tglTotalSales")+g("mktTotalSales")+(co.costco?g("costcoTotalSales"):0);
+  var totalLeadsRan=g("tglLeadsRan")+g("mktLeadsRan")+(co.costco?g("costcoLeadsRan"):0);
+  var totalLeadsSold=g("tglLeadsSold")+g("mktLeadsSold")+(co.costco?g("costcoLeadsSold"):0);
+  var hsClose=totalLeadsRan>0?Math.round(totalLeadsSold/totalLeadsRan*100):0;
+  var hsSummary=(totalLeadsRan>0?'<span style="color:#64748b;font-weight:600;margin-right:10px">'+totalLeadsRan+' ran / '+totalLeadsSold+' sold · '+hsClose+'%</span>':'')+(totalHS>0?"$"+totalHS.toLocaleString():"");
   var lastUpd=(viewDate?getHistoricalData():sd[act]).lastUpdated||"Not yet";
   var totalCanceled=g("hvacSMCanceled")+g("hvacSalesCanceled")+(co.plumb?g("plumbCanceled"):0)+(co.elec?g("elecCanceled"):0)+(co.excav?g("excavCanceled"):0);
 
@@ -935,7 +939,7 @@ function render(){
     (co.excav?sec("Excavation","🚜",c,co.lg,g("excavRevenue")>0?"$"+g("excavRevenue").toLocaleString():null,xB):"")+
     '</div><div>'+
     sec("HVAC Service & Maintenance","❄️",c,co.lg,g("hvacServiceRevenue")>0?"$"+g("hvacServiceRevenue").toLocaleString():null,hB)+
-    sec("HVAC Sales","📊",c,co.lg,totalHS>0?"$"+totalHS.toLocaleString():null,sB)+
+    sec("HVAC Sales","📊",c,co.lg,hsSummary||null,sB)+
     sec("Installs","🏗️",codePink?"#ec4899":c,co.lg,instSummary,sparkHdr+instB+cbB)+
     '</div></div><div class="footer">Live from the ServiceTitan API · Budgeted days auto calculated from weekdays · 3 Day arrow = latest day vs the prior 3 weekdays · WoW = last 5 weekdays vs the previous 5, bars are the last 4 weeks (faded = short week) · Date picker shows historical data</div></div>';
 
